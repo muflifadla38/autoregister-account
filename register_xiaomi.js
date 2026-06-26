@@ -973,37 +973,89 @@ async function register() {
     // Step 12: Redeem invite code (if configured)
     if (process.env.REFERRAL_CODE) {
       console.log("[12/12] Redeeming invite code...");
-      try {
+
+      const browseDelay = rand(12000, 18000);
+      console.log(`  [human] Browsing dashboard for ${Math.round(browseDelay / 1000)}s to avoid risk control...`);
+      await sleep(browseDelay);
+
+      for (let i = 0; i < rand(2, 4); i++) {
+        await page.mouse.wheel(0, rand(100, 300));
+        await sleep(rand(800, 1500));
+      }
+      await page.mouse.move(rand(200, 600), rand(200, 400));
+      await sleep(rand(1000, 2000));
+
+      async function attemptRedeem(attempt) {
         const inviteBtn = page
           .locator('button:has-text("Enter invite code")')
           .first();
-        if (await inviteBtn.isVisible({ timeout: 60000 }).catch(() => false)) {
-          await inviteBtn.click();
-          console.log("  Invite code modal opened");
-          await sleep(1000);
+        if (!(await inviteBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
+          console.log("  [INFO] 'Enter invite code' button not visible, skipping.");
+          return false;
+        }
 
-          const otpCodeInputs = page.locator('input[aria-label^="OTP Input"]');
-          const code = process.env.REFERRAL_CODE;
-          for (let i = 0; i < code.length && i < 6; i++) {
-            await otpCodeInputs.nth(i).fill(code[i]);
-            await sleep(100);
-          }
-          await sleep(500);
+        await inviteBtn.click();
+        console.log(`  Invite code modal opened (attempt ${attempt})`);
+        await sleep(rand(1500, 3000));
 
-          const redeemBtn = page.locator('button:has-text("Redeem")').first();
-          if (
-            await redeemBtn.isVisible({ timeout: 60000 }).catch(() => false)
-          ) {
-            await redeemBtn.click();
-            console.log(`  Invite code redeemed: ${code}`);
-            await sleep(2000);
-          } else {
-            console.log("  [WARN] Redeem button not found");
+        const otpCodeInputs = page.locator('input[aria-label^="OTP Input"]');
+        const code = process.env.REFERRAL_CODE;
+        for (let i = 0; i < code.length && i < 6; i++) {
+          await otpCodeInputs.nth(i).fill(code[i]);
+          await sleep(rand(200, 500));
+        }
+        await sleep(rand(1000, 2000));
+
+        const redeemBtn = page.locator('button:has-text("Redeem")').first();
+        if (!(await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
+          console.log("  [WARN] Redeem button not found");
+          return false;
+        }
+
+        await redeemBtn.click();
+        console.log(`  Invite code submitted: ${code}`);
+        await sleep(rand(3000, 5000));
+
+        const riskError = await page
+          .locator("text=/risk control|restrictions|contact customer/i")
+          .first()
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
+
+        if (!riskError) {
+          console.log(`  Invite code redeemed successfully`);
+          await sleep(rand(2000, 3000));
+          return true;
+        }
+
+        console.log(`  [WARN] Risk control detected on attempt ${attempt}`);
+        await page
+          .locator('button:has-text("OK"), button:has-text("Close"), button:has-text("Confirm")')
+          .first()
+          .click()
+          .catch(() => {});
+        await sleep(rand(2000, 3000));
+        return false;
+      }
+
+      try {
+        let success = await attemptRedeem(1);
+        if (!success) {
+          const retryDelay = rand(20000, 30000);
+          console.log(`  [human] Waiting ${Math.round(retryDelay / 1000)}s before retry...`);
+          await sleep(retryDelay);
+
+          for (let i = 0; i < rand(3, 5); i++) {
+            await page.mouse.wheel(0, rand(100, 400));
+            await sleep(rand(600, 1200));
           }
-        } else {
-          console.log(
-            "  [INFO] 'Enter invite code' button not visible, skipping.",
-          );
+          await page.mouse.move(rand(100, 800), rand(100, 500));
+          await sleep(rand(1000, 2000));
+
+          success = await attemptRedeem(2);
+          if (!success) {
+            console.log("  [WARN] Risk control still active after retry, skipping referral.");
+          }
         }
       } catch (e) {
         console.log(`  Invite code redemption failed: ${e.message}`);
