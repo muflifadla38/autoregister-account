@@ -364,6 +364,7 @@ async function register() {
   ];
   const LOCALES = ["en-US", "en-GB", "id-ID", "ja-JP"];
   const contextOpts = {
+    ignoreHTTPSErrors: true,
     userAgent: REALISTIC_UAS[Math.floor(Math.random() * REALISTIC_UAS.length)],
     viewport: {
       width: 1280 + Math.floor(Math.random() * 240),
