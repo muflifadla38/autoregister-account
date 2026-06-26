@@ -1,0 +1,34 @@
+{
+  "name": "xiaomi-mimo-autoreg",
+  "version": "1.0.0",
+  "description": "Auto register accounts on Xiaomi MiMo API Open Platform using Playwright + TempMail",
+  "main": "register_xiaomi.js",
+  "scripts": {
+    "xiaomi": "node register_xiaomi.js",
+    "qoder": "node register_qoder.js",
+    "loop-xiaomi": "node loop_xiaomi.js",
+    "tempmail": "node tempmail.js",
+    "check-proxies": "node check-proxies.js",
+    "recheck-proxies": "node recheck-proxies.js",
+    "extract-keys": "node extract-keys.js",
+    "playwright:install": "npx playwright install chromium"
+  },
+  "keywords": [
+    "automation",
+    "playwright",
+    "tempmail",
+    "xiaomi"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "2captcha": "^3.0.5-2",
+    "openai": "^6.44.0",
+    "playwright": "^1.61.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "recaptcha-solver": "^0.3.0",
+    "tesseract.js": "^5.1.1"
+  }
+}
