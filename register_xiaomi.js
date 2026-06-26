@@ -366,14 +366,10 @@ async function register() {
   const contextOpts = {
     ignoreHTTPSErrors: true,
     userAgent: REALISTIC_UAS[Math.floor(Math.random() * REALISTIC_UAS.length)],
-    viewport: {
-      width: 1280 + Math.floor(Math.random() * 240),
-      height: 720 + Math.floor(Math.random() * 240),
-    },
+    viewport: { width: 1366, height: 768 },
     locale: LOCALES[Math.floor(Math.random() * LOCALES.length)],
     timezoneId: TIMEZONES[Math.floor(Math.random() * TIMEZONES.length)],
     colorScheme: "light",
-    deviceScaleFactor: 1,
     isMobile: false,
     hasTouch: false,
     extraHTTPHeaders: {
@@ -976,7 +972,9 @@ async function register() {
       console.log("[12/12] Redeeming invite code...");
 
       const browseDelay = rand(12000, 18000);
-      console.log(`  [human] Browsing dashboard for ${Math.round(browseDelay / 1000)}s to avoid risk control...`);
+      console.log(
+        `  [human] Browsing dashboard for ${Math.round(browseDelay / 1000)}s to avoid risk control...`,
+      );
       await sleep(browseDelay);
 
       for (let i = 0; i < rand(2, 4); i++) {
@@ -990,8 +988,12 @@ async function register() {
         const inviteBtn = page
           .locator('button:has-text("Enter invite code")')
           .first();
-        if (!(await inviteBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
-          console.log("  [INFO] 'Enter invite code' button not visible, skipping.");
+        if (
+          !(await inviteBtn.isVisible({ timeout: 10000 }).catch(() => false))
+        ) {
+          console.log(
+            "  [INFO] 'Enter invite code' button not visible, skipping.",
+          );
           return false;
         }
 
@@ -1008,7 +1010,9 @@ async function register() {
         await sleep(rand(1000, 2000));
 
         const redeemBtn = page.locator('button:has-text("Redeem")').first();
-        if (!(await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false))) {
+        if (
+          !(await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false))
+        ) {
           console.log("  [WARN] Redeem button not found");
           return false;
         }
@@ -1031,7 +1035,9 @@ async function register() {
 
         console.log(`  [WARN] Risk control detected on attempt ${attempt}`);
         await page
-          .locator('button:has-text("OK"), button:has-text("Close"), button:has-text("Confirm")')
+          .locator(
+            'button:has-text("OK"), button:has-text("Close"), button:has-text("Confirm")',
+          )
           .first()
           .click()
           .catch(() => {});
@@ -1043,7 +1049,9 @@ async function register() {
         let success = await attemptRedeem(1);
         if (!success) {
           const retryDelay = rand(20000, 30000);
-          console.log(`  [human] Waiting ${Math.round(retryDelay / 1000)}s before retry...`);
+          console.log(
+            `  [human] Waiting ${Math.round(retryDelay / 1000)}s before retry...`,
+          );
           await sleep(retryDelay);
 
           for (let i = 0; i < rand(3, 5); i++) {
@@ -1055,7 +1063,9 @@ async function register() {
 
           success = await attemptRedeem(2);
           if (!success) {
-            console.log("  [WARN] Risk control still active after retry, skipping referral.");
+            console.log(
+              "  [WARN] Risk control still active after retry, skipping referral.",
+            );
           }
         }
       } catch (e) {
@@ -1079,11 +1089,17 @@ async function register() {
   } catch (err) {
     console.error("ERROR:", err.message);
     process.exitCode = 1;
-    console.log("  >>> Playing error sound alert");
-    await playSound(SOUNDS.manualError);
-    // await page.screenshot({ path: 'error.png' });
-    console.log("Error screenshot saved: error.png");
-    await sleep(10000);
+    const proxyErrors =
+      /ERR_TIMED_OUT|ERR_CONNECTION_REFUSED|ERR_PROXY|ERR_TUNNEL|ERR_CERT|ECONNREFUSED|ECONNRESET|ETIMEDOUT/;
+    if (proxyErrors.test(err.message)) {
+      console.log("  [proxy] Proxy error detected, skipping to next proxy...");
+      await sleep(1000);
+    } else {
+      console.log("  >>> Playing error sound alert");
+      await playSound(SOUNDS.manualError);
+      console.log("Error screenshot saved: error.png");
+      await sleep(10000);
+    }
   } finally {
     await browser.close();
   }
