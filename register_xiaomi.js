@@ -95,7 +95,7 @@ function loadProxiesFromCsv(csvPath) {
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
     const p = (cols[proxyIdx] || "").trim();
-    if (p && p.startsWith("http")) {
+    if (p && (p.startsWith("http") || p.startsWith("socks"))) {
       proxies.push(p);
     }
   }
@@ -128,6 +128,7 @@ const FREE_PROXIES =
       ? process.env.PROXIES.split(",").map((p) => p.trim())
       : [];
 
+console.log(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`);
 async function getRandomProxy() {
   if (CONFIG.proxy) return CONFIG.proxy;
   if (FREE_PROXIES.length === 0) return "";
@@ -227,8 +228,12 @@ async function handleTermsAgreement(page) {
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
 
 function parseProxy(proxyString) {
+  const supported = ["http:", "https:", "socks4:", "socks5:"];
   try {
     const url = new URL(proxyString);
+    if (!supported.includes(url.protocol)) {
+      return { server: `http://${proxyString}` };
+    }
     const server = `${url.protocol}//${url.hostname}${url.port ? ":" + url.port : ""}`;
     const proxyConfig = { server };
     if (url.username) {
@@ -239,6 +244,9 @@ function parseProxy(proxyString) {
     }
     return proxyConfig;
   } catch (_) {
+    if (/^\d+\.\d+\.\d+\.\d+:\d+/.test(proxyString)) {
+      return { server: `http://${proxyString}` };
+    }
     return { server: proxyString };
   }
 }
@@ -494,7 +502,7 @@ async function register() {
         try {
           await page.waitForSelector('iframe[title="reCAPTCHA"]', {
             state: "attached",
-            timeout: 6000000,
+            timeout: 60000,
           });
           await sleep(rand(1000, 2000)); // let iframe fully render
 
@@ -504,7 +512,7 @@ async function register() {
             if (frame) {
               await frame.waitForSelector(".recaptcha-checkbox-border", {
                 state: "visible",
-                timeout: 6000000,
+                timeout: 180000,
               });
               const checkbox = await frame.$(".recaptcha-checkbox-border");
               if (checkbox) {

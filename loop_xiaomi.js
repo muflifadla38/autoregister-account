@@ -49,7 +49,7 @@ function loadProxiesFromCsv(csvPath) {
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
     const p = (cols[proxyIdx] || "").trim();
-    if (p && p.startsWith("http")) {
+    if (p && (p.startsWith("http") || p.startsWith("socks"))) {
       proxies.push(p);
     }
   }
