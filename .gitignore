@@ -5,6 +5,3 @@ test.txt
 .env
 *.txt
 *.csv
-
-!keys.csv
-!proxies_raw.csv
