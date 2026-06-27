@@ -1,24 +1,26 @@
-const { loadEnv } = require("./utils/env.js");
+const { loadEnv } = require("../utils/env.js");
 loadEnv();
 
 const { chromium } = require("playwright-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth")();
 chromium.use(StealthPlugin);
 
-const TempMail = require("./tempmail.js");
+const TempMail = require("../tempmail.js");
 const { solve: solveRecaptchaAudio } = require("recaptcha-solver");
 const fs = require("fs");
 const path = require("path");
 
-const { findFfmpeg } = require("./utils/ffmpeg.js");
-const { sleep, rand, typeHuman, handleCookies } = require("./utils/helpers.js");
+const ROOT = path.join(__dirname, "..");
+
+const { findFfmpeg } = require("../utils/ffmpeg.js");
+const { sleep, rand, typeHuman, handleCookies } = require("../utils/helpers.js");
 const {
   solveRecaptchaWith2captcha,
   waitForCaptchaSolved,
-} = require("./utils/captcha.js");
-const { solveImageCaptcha } = require("./utils/capmonster.js");
-const { loadProxies } = require("./utils/proxy.js");
-const { extractKeys } = require("./utils/extract-keys.js");
+} = require("../utils/captcha.js");
+const { solveImageCaptcha } = require("../utils/capmonster.js");
+const { loadProxies } = require("../utils/proxy.js");
+const { extractKeys } = require("../utils/extract-keys.js");
 
 const ffmpegPath = findFfmpeg();
 console.log(`  ffmpeg: ${ffmpegPath}`);
@@ -34,7 +36,7 @@ const CONFIG = {
   // API key name
   apiKeyName: "auto-" + Date.now().toString(36),
   // Output file for API key
-  outputFile: path.join(__dirname, "keys", "keys.csv"),
+  outputFile: path.join(ROOT, "keys", "keys.csv"),
   // User config
   password: process.env.PLATFORM_PASSWORD || "NutrisariJeruk2026!",
   region: "Indonesia",
@@ -57,7 +59,7 @@ const CONFIG = {
 
 function saveWorkingProxy(proxy) {
   if (!proxy) return;
-  const file = path.join(__dirname, "proxies", "worked.csv");
+  const file = path.join(ROOT, "proxies", "worked.csv");
   const existing = new Set();
   if (fs.existsSync(file)) {
     const lines = fs.readFileSync(file, "utf8").trim().split("\n");
@@ -76,7 +78,7 @@ function saveWorkingProxy(proxy) {
 
 const FREE_PROXIES =
   process.env.USE_PROXY_CSV === "true"
-    ? loadProxies(path.join(__dirname, "proxies", "rechecked.csv"))
+    ? loadProxies(path.join(ROOT, "proxies", "rechecked.csv"))
     : process.env.PROXIES
       ? process.env.PROXIES.split(",").map((p) => p.trim())
       : [];
@@ -205,9 +207,9 @@ function parseProxy(proxyString) {
 }
 
 const SOUNDS = {
-  manualCaptcha: path.join(__dirname, "sounds", "manual-captcha.wav"),
-  manualError: path.join(__dirname, "sounds", "error.wav"),
-  success: path.join(__dirname, "sounds", "success.wav"),
+  manualCaptcha: path.join(ROOT, "sounds", "manual-captcha.wav"),
+  manualError: path.join(ROOT, "sounds", "error.wav"),
+  success: path.join(ROOT, "sounds", "success.wav"),
 };
 
 // Plays a wav file via PowerShell SoundPlayer (blocks until playback finishes).
@@ -1092,8 +1094,8 @@ async function register() {
     // Auto extract keys to omniroute.txt
     try {
       const extractResult = extractKeys(
-        path.join(__dirname, "keys", "keys.csv"),
-        path.join(__dirname, "keys", "omniroute.txt"),
+        path.join(ROOT, "keys", "keys.csv"),
+        path.join(ROOT, "keys", "omniroute.txt"),
       );
       if (extractResult.added > 0) {
         console.log(`  [extract] ${extractResult.added} new key(s) added to omniroute.txt`);

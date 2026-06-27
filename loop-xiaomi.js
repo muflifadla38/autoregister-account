@@ -1,4 +1,4 @@
-// loop-xiaomi.js — Keeps re-running register-xiaomi.js with proxy rotation & delays
+// loop-xiaomi.js — Keeps re-running register.js xiaomi with proxy rotation & delays
 // Keypress while a run is in progress:
 //   s / n  → skip current run (kill child, rotate proxy)
 //   q      → stop loop cleanly (print report and exit)
@@ -149,7 +149,7 @@ function run() {
 
   running = true;
   enableKeypress();
-  currentChild = spawn("node", ["register-xiaomi.js"], {
+  currentChild = spawn("node", ["register.js", "xiaomi"], {
     stdio: "inherit",
     cwd: __dirname,
     env,

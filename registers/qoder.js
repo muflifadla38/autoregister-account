@@ -6,7 +6,7 @@
 // hook), and the per-run loop.
 
 // Load Environment Variables
-const { loadEnv } = require('./utils/env.js');
+const { loadEnv } = require('../utils/env.js');
 loadEnv();
 
 const path = require('path');
@@ -14,14 +14,16 @@ const { chromium } = require('playwright-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')();
 chromium.use(StealthPlugin);
 
-const { sleep, rand } = require('./utils/helpers');
+const ROOT = path.join(__dirname, "..");
+
+const { sleep, rand } = require('../utils/helpers');
 
 // Modular steps
-const { stepNavigatePlatform, stepNavigateQoder } = require('./steps/navigate');
-const { stepOpenOAuth, stepHandleOAuth } = require('./steps/oauth');
-const { stepCreateCredentials, stepFillForm, stepEnterPassword } = require('./steps/registration');
-const { stepVerifyCaptcha } = require('./steps/captcha');
-const { stepInputOtp } = require('./steps/otp');
+const { stepNavigatePlatform, stepNavigateQoder } = require('../steps/navigate');
+const { stepOpenOAuth, stepHandleOAuth } = require('../steps/oauth');
+const { stepCreateCredentials, stepFillForm, stepEnterPassword } = require('../steps/registration');
+const { stepVerifyCaptcha } = require('../steps/captcha');
+const { stepInputOtp } = require('../steps/otp');
 
 // ─── CONFIG ──────────────────────────────────────────────
 const CONFIG = {
@@ -30,7 +32,7 @@ const CONFIG = {
   // Qoder provider page
   qoderUrl: process.env.QODER_URL,
   // Output file
-  outputFile: path.join(__dirname, 'keys', 'keys.csv'),
+  outputFile: path.join(ROOT, 'keys', 'keys.csv'),
   // Platform password (for first-time access)
   platformPassword: process.env.PLATFORM_PASSWORD,
   // Password for Qoder accounts

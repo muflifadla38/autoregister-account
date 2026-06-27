@@ -1,21 +1,23 @@
-const { loadEnv } = require('./utils/env.js');
+const { loadEnv } = require('../utils/env.js');
 loadEnv();
 
 const { chromium } = require('playwright-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')();
 chromium.use(StealthPlugin);
 
-const TempMail = require('./tempmail.js');
+const TempMail = require('../tempmail.js');
 const fs = require('fs');
 const path = require('path');
 
-const { sleep, rand, handleCookies, humanMouseMove, humanScroll } = require('./utils/helpers.js');
+const ROOT = path.join(__dirname, "..");
+
+const { sleep, rand, handleCookies, humanMouseMove, humanScroll } = require('../utils/helpers.js');
 
 const CONFIG = {
   registerUrl: 'https://account.alibabacloud.com/register/intl_register.htm',
   consoleUrl: 'https://modelstudio.console.alibabacloud.com',
   password: process.env.ALIBABA_PASSWORD || 'AlibabaAuto2025!',
-  outputFile: path.join(__dirname, 'keys', 'alibaba.csv'),
+  outputFile: path.join(ROOT, 'keys', 'alibaba.csv'),
   emailTimeout: 120000,
   otpTimeout: 180000,
   navigateTimeout: 30000,
