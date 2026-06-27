@@ -15,6 +15,7 @@
     "recheck-proxies": "node recheck-proxies.js",
     "proxies": "node check-proxies.js && node recheck-proxies.js",
     "auto-xiaomi": "node check-proxies.js && node recheck-proxies.js && node loop.js xiaomi",
+    "auto-xiaomi-ps": "node check-proxies.js --provider proxyscrape && node recheck-proxies.js && node loop.js xiaomi",
     "extract-keys": "node extract-keys.js",
     "playwright:install": "npx playwright install chromium"
   },

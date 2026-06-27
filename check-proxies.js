@@ -1,10 +1,14 @@
-const { run, PROXIES_DIR } = require("./utils/proxy");
+const { run, PROXIES_DIR, parseArgs } = require("./utils/proxy");
 const path = require("path");
+
+const args = parseArgs();
+const provider = args.provider || "hproxy";
 
 run({
   fetch: true,
-  mode: "deep",
-  deadTarget: 0,
-  input: path.join(PROXIES_DIR, "free.csv"),
+  provider,
+  mode: args.mode || "deep",
+  deadTarget: args.deadTarget || 0,
+  input: path.join(PROXIES_DIR, "raw.csv"),
   output: path.join(PROXIES_DIR, "checked.csv"),
 });

@@ -110,12 +110,13 @@ node loop.js xiaomi         # Same
 # Add new modes by creating loops/newmode.js + adding to loop.js
 ```
 
-Keypress controls: `s`/`n` skip · `q` quit
+Keypress controls: `s`/`n` skip run · `d` skip step · `q` quit
 
 ### Full Automation
 
 ```bash
-npm run auto-xiaomi                # Fetch proxies + check + recheck + loop xiaomi
+npm run auto-xiaomi           # hproxy + check + recheck + loop xiaomi
+npm run auto-xiaomi-ps        # proxyscrape + check + recheck + loop xiaomi
 ```
 
 One command to do everything: fetch fresh proxies from API, deep check → checked.csv, recheck → rechecked.csv, then start loop registration.
@@ -123,15 +124,28 @@ One command to do everything: fetch fresh proxies from API, deep check → check
 ### Proxy Management
 
 ```bash
-npm run check-proxies       # Fetch from API + deep check → proxies/checked.csv
-npm run recheck-proxies     # Re-validate → proxies/rechecked.csv
-npm run proxies             # Both: check + recheck
+npm run check-proxies                     # Default (hproxy) + deep check → proxies/checked.csv
+node check-proxies.js --provider proxyscrape  # Use proxyscrape provider
+npm run recheck-proxies                   # Re-validate → proxies/rechecked.csv
+npm run proxies                           # Both: check + recheck
+```
+
+**Providers:**
+
+| Provider | Source | Default |
+| ---------- | ------ | ------- |
+| `hproxy` | hproxy.com API | Yes |
+| `proxyscrape` | ProxyScrape GitHub | No |
+
+```bash
+node check-proxies.js --provider proxyscrape
+node check-proxies.js --provider hproxy
 ```
 
 Advanced:
 
 ```bash
-node utils/proxy.js --mode deep --dead-target 0 --fetch
+node utils/proxy.js --mode deep --dead-target 0 --fetch --provider proxyscrape
 node utils/proxy.js --mode normal --input proxies/rechecked.csv
 node utils/proxy.js --mode dedup --input proxies/rechecked.csv
 ```
@@ -179,7 +193,7 @@ Auto-extracts after each registration. Manual run for re-extraction.
 │   └── otp.js
 │
 ├── proxies/                 # Proxy files (gitignored)
-│   ├── free.csv             # Raw from API (hproxy.com)
+│   ├── raw.csv              # Raw from provider API (hproxy/proxyscrape)
 │   ├── checked.csv          # Output of check-proxies (proxy,country)
 │   ├── rechecked.csv        # Output of recheck-proxies (proxy,country)
 │   ├── worked.csv           # Proxies that registered successfully (proxy,country,timestamp)
@@ -239,13 +253,13 @@ http://1.2.3.4:80,2026-06-27T20:00:00.000Z,2026-06-27T20:10:00.000Z,automated_qu
 
 ## Proxy Flow
 
-1. **Fetch** — `check-proxies.js` downloads from hproxy.com API → `proxies/free.csv`
-2. **Clean** — parses protocols (http/https/socks4/socks5) + country from API data
+1. **Fetch** — `check-proxies.js` downloads from provider API (hproxy/proxyscrape) → `proxies/raw.csv`
+2. **Parse** — provider-specific parser extracts `proxy,country` from raw CSV
 3. **Check** — CONNECT + TLS verify to 3 targets (platform.xiaomimimo.com, account.xiaomi.com, global.account.xiaomi.com)
 4. **Deep clean** — loops until dead=0, shows alive proxies sorted by speed with country
 5. **Output** — `proxies/checked.csv` (`proxy,country` format)
 6. **Recheck** — `recheck-proxies.js` re-validates → `proxies/rechecked.csv`
-7. **Use** — register scripts read from `proxies/rechecked.csv` when `USE_PROXY_CSV=true`
+7. **Use** — register scripts read from `proxies/rechecked.csv`
 8. **Save** — working proxies auto-saved to `proxies/worked.csv` with timestamp
 
 ## Registration Flow

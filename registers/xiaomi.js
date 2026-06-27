@@ -13,17 +13,65 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 
 const { findFfmpeg } = require("../utils/ffmpeg.js");
-const { sleep, rand, typeHuman, handleCookies } = require("../utils/helpers.js");
+const {
+  sleep,
+  rand,
+  typeHuman,
+  handleCookies,
+} = require("../utils/helpers.js");
 const {
   solveRecaptchaWith2captcha,
   waitForCaptchaSolved,
 } = require("../utils/captcha.js");
 const { solveImageCaptcha } = require("../utils/capmonster.js");
-const { loadProxies, isBlacklisted, addToBlacklist, cleanExpiredBlacklist } = require("../utils/proxy.js");
+const {
+  loadProxies,
+  isBlacklisted,
+  addToBlacklist,
+  cleanExpiredBlacklist,
+} = require("../utils/proxy.js");
 const { extractKeys } = require("../utils/extract-keys.js");
 
 const ffmpegPath = findFfmpeg();
 console.log(`  ffmpeg: ${ffmpegPath}`);
+
+let skipStep = false;
+let keypressEnabled = false;
+
+function enableStepKeypress() {
+  if (keypressEnabled) return;
+  if (!process.stdin || !process.stdin.isTTY) return;
+  try {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding("utf8");
+    keypressEnabled = true;
+    process.stdin.on("data", (chunk) => {
+      const s = String(chunk);
+      if (s === "d" || s === "D") {
+        skipStep = true;
+        console.log("\n  [skip] Step skip requested...");
+      }
+    });
+  } catch (_) {}
+}
+
+function disableStepKeypress() {
+  if (!keypressEnabled) return;
+  try {
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+  } catch (_) {}
+  keypressEnabled = false;
+}
+
+function checkSkip() {
+  if (skipStep) {
+    skipStep = false;
+    return true;
+  }
+  return false;
+}
 
 const CONFIG = {
   // Landing page (referral link)
@@ -52,7 +100,7 @@ const CONFIG = {
   // CapMonster API key for Xiaomi custom text/image captcha (2nd captcha)
   capmonsterApiKey: process.env.CAPMONSTER_API_KEY || "",
   // Proxy (optional): 'http://host:port' or empty to disable
-  proxy: process.env.PROXY || "",
+  proxy: null,
   // Blacklist duration in minutes for proxies flagged by Google
   blacklistDuration: 10,
 };
@@ -60,7 +108,20 @@ const CONFIG = {
 // sleep, rand, and typeHuman functions are now imported from ./utils/helpers.js
 
 function formatIndonesianDate(date) {
-  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const months = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ];
   const d = date.getDate();
   const m = months[date.getMonth()];
   const y = date.getFullYear();
@@ -86,46 +147,178 @@ function saveWorkingProxy(proxy, country) {
   }
   const timestamp = formatIndonesianDate(new Date());
   fs.appendFileSync(file, `${proxy},${country || ""},${timestamp}\n`, "utf8");
-  console.log(`  [proxy] Working proxy saved: ${proxy} [${country || "-"}] (${timestamp})`);
+  console.log(
+    `  [proxy] Working proxy saved: ${proxy} [${country || "-"}] (${timestamp})`,
+  );
 }
 
-const FREE_PROXIES =
-  process.env.USE_PROXY_CSV === "true"
-    ? loadProxies(path.join(ROOT, "proxies", "rechecked.csv"))
-    : process.env.PROXIES
-      ? process.env.PROXIES.split(",").map((p) => ({ proxy: p.trim(), country: "" }))
-      : [];
+const FREE_PROXIES = process.env.PROXIES
+  ? process.env.PROXIES.split(",").map((p) => ({
+      proxy: p.trim(),
+      country: "",
+    }))
+  : loadProxies(path.join(ROOT, "proxies", "rechecked.csv"));
 
 cleanExpiredBlacklist();
 console.log(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`);
 
 const COUNTRY_PROFILES = {
-  US: { locale: "en-US", timezone: "America/New_York",    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  GB: { locale: "en-GB", timezone: "Europe/London",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  DE: { locale: "de-DE", timezone: "Europe/Berlin",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  FR: { locale: "fr-FR", timezone: "Europe/Paris",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  JP: { locale: "ja-JP", timezone: "Asia/Tokyo",          ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
-  KR: { locale: "ko-KR", timezone: "Asia/Seoul",          ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  SG: { locale: "en-SG", timezone: "Asia/Singapore",      ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  ID: { locale: "id-ID", timezone: "Asia/Jakarta",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  BR: { locale: "pt-BR", timezone: "America/Sao_Paulo",   ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  AU: { locale: "en-AU", timezone: "Australia/Sydney",    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
-  NL: { locale: "nl-NL", timezone: "Europe/Amsterdam",    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  IN: { locale: "en-IN", timezone: "Asia/Kolkata",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  HK: { locale: "en-HK", timezone: "Asia/Hong_Kong",     ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
-  TH: { locale: "th-TH", timezone: "Asia/Bangkok",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  VN: { locale: "vi-VN", timezone: "Asia/Ho_Chi_Minh",   ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  MY: { locale: "ms-MY", timezone: "Asia/Kuala_Lumpur",   ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  PH: { locale: "en-PH", timezone: "Asia/Manila",         ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  TW: { locale: "zh-TW", timezone: "Asia/Taipei",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  CN: { locale: "zh-CN", timezone: "Asia/Shanghai",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  RU: { locale: "ru-RU", timezone: "Europe/Moscow",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  TR: { locale: "tr-TR", timezone: "Europe/Istanbul",     ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  PL: { locale: "pl-PL", timezone: "Europe/Warsaw",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  IT: { locale: "it-IT", timezone: "Europe/Rome",         ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  ES: { locale: "es-ES", timezone: "Europe/Madrid",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
-  CA: { locale: "en-CA", timezone: "America/Toronto",     ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
-  _default: { locale: "en-US", timezone: "America/New_York", ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  US: {
+    locale: "en-US",
+    timezone: "America/New_York",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  GB: {
+    locale: "en-GB",
+    timezone: "Europe/London",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  DE: {
+    locale: "de-DE",
+    timezone: "Europe/Berlin",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  FR: {
+    locale: "fr-FR",
+    timezone: "Europe/Paris",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  JP: {
+    locale: "ja-JP",
+    timezone: "Asia/Tokyo",
+    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "macOS",
+  },
+  KR: {
+    locale: "ko-KR",
+    timezone: "Asia/Seoul",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  SG: {
+    locale: "en-SG",
+    timezone: "Asia/Singapore",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  ID: {
+    locale: "id-ID",
+    timezone: "Asia/Jakarta",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  BR: {
+    locale: "pt-BR",
+    timezone: "America/Sao_Paulo",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  AU: {
+    locale: "en-AU",
+    timezone: "Australia/Sydney",
+    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "macOS",
+  },
+  NL: {
+    locale: "nl-NL",
+    timezone: "Europe/Amsterdam",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  IN: {
+    locale: "en-IN",
+    timezone: "Asia/Kolkata",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  HK: {
+    locale: "en-HK",
+    timezone: "Asia/Hong_Kong",
+    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "macOS",
+  },
+  TH: {
+    locale: "th-TH",
+    timezone: "Asia/Bangkok",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  VN: {
+    locale: "vi-VN",
+    timezone: "Asia/Ho_Chi_Minh",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  MY: {
+    locale: "ms-MY",
+    timezone: "Asia/Kuala_Lumpur",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  PH: {
+    locale: "en-PH",
+    timezone: "Asia/Manila",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  TW: {
+    locale: "zh-TW",
+    timezone: "Asia/Taipei",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  CN: {
+    locale: "zh-CN",
+    timezone: "Asia/Shanghai",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  RU: {
+    locale: "ru-RU",
+    timezone: "Europe/Moscow",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  TR: {
+    locale: "tr-TR",
+    timezone: "Europe/Istanbul",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  PL: {
+    locale: "pl-PL",
+    timezone: "Europe/Warsaw",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  IT: {
+    locale: "it-IT",
+    timezone: "Europe/Rome",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  ES: {
+    locale: "es-ES",
+    timezone: "Europe/Madrid",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
+  CA: {
+    locale: "en-CA",
+    timezone: "America/Toronto",
+    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "macOS",
+  },
+  _default: {
+    locale: "en-US",
+    timezone: "America/New_York",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    platform: "Windows",
+  },
 };
 
 function getCountryProfile(country) {
@@ -276,7 +469,7 @@ function parseProxy(proxyString) {
 
 const SOUNDS = {
   manualCaptcha: path.join(ROOT, "sounds", "manual-captcha.wav"),
-  manualError: path.join(ROOT, "sounds", "error.wav"),
+  error: path.join(ROOT, "sounds", "error.wav"),
   success: path.join(ROOT, "sounds", "success.wav"),
 };
 
@@ -343,19 +536,18 @@ async function gotoTolerant(page, url, opts = {}) {
 }
 
 async function register() {
-  CONFIG.proxy = await getRandomProxy();
+  enableStepKeypress();
+  if (process.env.USE_PROXY === "true") {
+    CONFIG.proxy = await getRandomProxy();
+  }
+
   console.log("[1/12] Launching browser...");
   const launchOpts = {
     headless: false,
     args: [
-      "--disable-blink-features=AutomationControlled",
       "--no-sandbox",
-      "--disable-features=IsolateOrigins,site-per-process,AutomationControlled",
-      "--disable-infobars",
       "--disable-dev-shm-usage",
       "--disable-popup-blocking",
-      "--disable-notifications",
-      "--disable-extensions",
       "--start-maximized",
     ],
   };
@@ -375,28 +567,29 @@ async function register() {
   if (CONFIG.proxy) {
     launchOpts.proxy = parseProxy(CONFIG.proxy);
     console.log(
-      `  Using proxy: ${CONFIG.proxy.includes("@") ? CONFIG.proxy.split("@").pop() : CONFIG.proxy}`,
+      `  Using proxy: ${CONFIG.proxy.includes("@") ? CONFIG.proxy.split("@").pop() : CONFIG.proxy} (Country: ${SELECTED_COUNTRY || "N/A"})`,
     );
   }
   const browser = await chromium.launch(launchOpts);
   const profile = getCountryProfile(SELECTED_COUNTRY);
-  console.log(`  [fingerprint] Country: ${SELECTED_COUNTRY || "N/A"} → locale=${profile.locale}, tz=${profile.timezone}, platform=${profile.platform}`);
+  console.log(
+    `  [fingerprint] Country: ${SELECTED_COUNTRY || "N/A"} → locale=${profile.locale}, tz=${profile.timezone}, platform=${profile.platform}`,
+  );
 
   const contextOpts = {
     ignoreHTTPSErrors: true,
     userAgent: profile.ua,
-    viewport: { width: profile.platform === "macOS" ? 1440 : 1366, height: profile.platform === "macOS" ? 900 : 768 },
+    viewport: {
+      width: profile.platform === "macOS" ? 1440 : 1366,
+      height: profile.platform === "macOS" ? 900 : 768,
+    },
     locale: profile.locale,
     timezoneId: profile.timezone,
     colorScheme: "light",
     isMobile: false,
     hasTouch: false,
     extraHTTPHeaders: {
-      "Accept-Language": `${profile.locale.replace("-", "_")},en;q=0.9`,
-      "sec-ch-ua":
-        '"Chromium";v="126", "Not/A)Brand";v="8", "Google Chrome";v="126"',
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": `"${profile.platform}"`,
+      "Accept-Language": `${profile.locale},en;q=0.9`,
     },
   };
   const context = await browser.newContext(contextOpts);
@@ -463,11 +656,13 @@ async function register() {
     }
 
     // Agree to terms checkbox
-    const checkbox = page.locator('input[type="checkbox"]').first();
-    if (await checkbox.isVisible()) {
-      const isChecked = await checkbox.isChecked();
+    const termsCheckbox = page
+      .locator('.mi-accept-terms input[type="checkbox"]')
+      .first();
+    if (await termsCheckbox.isVisible()) {
+      const isChecked = await termsCheckbox.isChecked();
       if (!isChecked) {
-        await checkbox.check();
+        await termsCheckbox.check();
       }
       console.log("  Terms checkbox: checked");
     }
@@ -485,7 +680,7 @@ async function register() {
       )
       .first();
     await submitBtn.click();
-    await sleep(rand(2000, 4000));
+    await sleep(rand(5000, 10000));
 
     // Handle captcha
     if (CONFIG.captchaMode === "audio") {
@@ -501,7 +696,11 @@ async function register() {
           .first();
         if (await blocked.isVisible({ timeout: 6000000 }).catch(() => false)) {
           if (CONFIG.proxy) {
-            addToBlacklist(CONFIG.proxy, "automated_queries", CONFIG.blacklistDuration);
+            addToBlacklist(
+              CONFIG.proxy,
+              "automated_queries",
+              CONFIG.blacklistDuration,
+            );
           }
           throw new Error("GOOGLE_RATE_LIMITED");
         }
@@ -511,161 +710,188 @@ async function register() {
 
       // Wait for reCAPTCHA checkbox to load (with retry)
       console.log("  Waiting for reCAPTCHA to load...");
+      const recaptchaFrame = page.frameLocator("iframe[title*='reCAPTCHA']");
+      const recaptchaCheckbox = recaptchaFrame.locator("#recaptcha-anchor");
       let checkboxClicked = false;
-      for (let attempt = 0; attempt < 5 && !checkboxClicked; attempt++) {
+      let captchaHandled = false;
+      for (let attempt = 1; attempt <= 5; attempt++) {
         try {
-          await page.waitForSelector('iframe[title="reCAPTCHA"]', {
-            state: "attached",
-            timeout: 60000,
-          });
-          await sleep(rand(1000, 2000)); // let iframe fully render
-
-          const recaptchaFrame = await page.$('iframe[title="reCAPTCHA"]');
-          if (recaptchaFrame) {
-            const frame = await recaptchaFrame.contentFrame();
-            if (frame) {
-              await frame.waitForSelector(".recaptcha-checkbox-border", {
-                state: "visible",
-                timeout: 180000,
-              });
-              const checkbox = await frame.$(".recaptcha-checkbox-border");
-              if (checkbox) {
-                await checkbox.click();
-                console.log("  Checkbox clicked, waiting for challenge...");
-                await sleep(rand(2000, 3000));
-                checkboxClicked = true;
-              }
-            }
-          }
-        } catch (_) {
-          if (attempt < 4) {
+          await recaptchaCheckbox.click({ timeout: 5000 });
+          checkboxClicked = true;
+          break;
+        } catch (e) {
+          if (attempt < 5) {
             console.log(
-              `  Checkbox not ready (attempt ${attempt + 1}/5), retrying...`,
+              `  Checkbox not ready (attempt ${attempt}/5), retrying.`,
             );
-            await sleep(1000);
-          }
-        }
-      }
-      if (!checkboxClicked) {
-        console.log(
-          "  [WARN] Could not click checkbox, trying solve anyway...",
-        );
-      }
-
-      try {
-        process.env.VERBOSE = "1";
-        console.log("  Solving reCAPTCHA via audio...");
-        await solveRecaptchaAudio(page, {
-          wait: 15000,
-          retry: 5,
-          ffmpeg: ffmpegPath,
-        });
-        console.log("  reCAPTCHA solved via audio!");
-
-        // Check for Xiaomi custom 2nd captcha (text/image)
-        console.log(
-          "  Waiting for next step (custom captcha modal or OTP screen)...",
-        );
-        let captchaVisible = false;
-        let otpVisible = false;
-        const checkDeadline = Date.now() + 15000;
-
-        while (Date.now() < checkDeadline) {
-          const customImg = page
-            .locator(
-              '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
-            )
-            .first();
-          if (
-            await customImg.isVisible({ timeout: 60000 }).catch(() => false)
-          ) {
-            captchaVisible = true;
-            break;
-          }
-          const otpInput = page
-            .locator(
-              'input[maxlength="6"], input[maxlength="4"], input[type="number"], input[placeholder*="code" i], input[placeholder*="OTP" i], input[placeholder*="verif" i]',
-            )
-            .first();
-          if (await otpInput.isVisible({ timeout: 60000 }).catch(() => false)) {
-            otpVisible = true;
-            break;
-          }
-          await sleep(500);
-        }
-
-        if (captchaVisible) {
-          const customImg = page
-            .locator(
-              '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
-            )
-            .first();
-          console.log(
-            "  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving with CapMonster ImageToText...",
-          );
-          // await page.screenshot({ path: 'custom_captcha.png' });
-
-          const solved = await solveImageCaptcha(customImg, page, {
-            apiKey: CONFIG.capmonsterApiKey,
-          });
-          if (solved) {
-            console.log("  Custom captcha solved!");
           } else {
-            console.log(
-              "  >>> CapMonster failed — solve manually within 20s or browser closes",
-            );
-            const manualSolved = await waitForCaptchaSolved(
-              page,
-              CONFIG.captchaSolveTimeout,
-            );
-            if (!manualSolved) {
-              console.log("  Timeout, closing browser");
-              await browser.close();
-              process.exit(1);
-            } else {
-              console.log("  >>> Manual captcha solved, continuing...");
-            }
+            console.log("  Checkbox not found after 5 attempts.");
           }
-        } else if (otpVisible) {
-          console.log(
-            "  Directly advanced to OTP screen, no custom captcha needed.",
-          );
-        } else {
-          console.log(
-            "  [WARN] Neither custom captcha nor OTP screen detected after 15s.",
-          );
         }
-      } catch (e) {
-        if (e.message === "GOOGLE_RATE_LIMITED") {
+      }
+
+      // If checkbox not clicked, check for special states before falling back
+      if (!checkboxClicked) {
+        const verificationCode = await page
+          .locator("text=/Enter verification code/i")
+          .first()
+          .isVisible({ timeout: 2000 })
+          .catch(() => false);
+        if (verificationCode) {
           console.log(
-            "  >>> Google blocked this IP/network ('automated queries').",
+            "  [INFO] 'Enter verification code' detected — direct to manual solve.",
           );
-          if (CONFIG.proxy) {
-            addToBlacklist(CONFIG.proxy, "automated_queries", CONFIG.blacklistDuration);
-          }
-          console.log(
-            "  >>> Auto audio solve will NOT work — IP is rate-limited.",
-          );
-          console.log(
-            "  >>> Fix: use a residential/mobile proxy (PROXY env), or solve manually below.",
-          );
-          // When running under loop.js with AUTO_SKIP_RATE_LIMIT, bail out
-          // immediately so loop can rotate to the next proxy instead of
-          // hanging on manual solve for a flagged IP.
-          if (process.env.AUTO_SKIP_RATE_LIMIT === "1") {
-            console.log(
-              "  >>> AUTO_SKIP_RATE_LIMIT=1 — aborting run, loop will skip.",
-            );
-            process.exitCode = 1;
-            return;
-          }
-        } else {
-          console.log(`  Audio solver failed: ${e.message}`);
-          console.log("  Falling back to manual solve...");
+          captchaHandled = true;
         }
+      }
+
+      if (captchaHandled) {
+        console.log("  >>> Please solve the captcha manually in the browser.");
         console.log("  >>> Playing manual-captcha sound alert");
         await playSound(SOUNDS.manualCaptcha);
-        await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
+        const solved = await waitForCaptchaSolved(
+          page,
+          CONFIG.captchaSolveTimeout,
+        );
+        if (solved) console.log("  Captcha solved! Continuing...");
+        else
+          console.log(
+            "  [WARN] Captcha detection timeout, proceeding anyway...",
+          );
+      } else if (!checkboxClicked) {
+        console.log("  [WARN] Could not click reCAPTCHA checkbox.");
+        console.log("  >>> Please solve the captcha manually in the browser.");
+        console.log("  >>> Playing manual-captcha sound alert");
+        await playSound(SOUNDS.manualCaptcha);
+        const captchaSolved = await waitForCaptchaSolved(
+          page,
+          CONFIG.captchaSolveTimeout,
+        );
+        if (captchaSolved) {
+          console.log("  Captcha solved! Continuing...");
+        } else {
+          console.log(
+            "  [WARN] Captcha detection timeout, proceeding anyway...",
+          );
+        }
+      } else {
+        try {
+          process.env.VERBOSE = "1";
+          console.log("  Solving reCAPTCHA via audio...");
+          await solveRecaptchaAudio(page, {
+            wait: 15000,
+            retry: 5,
+            ffmpeg: ffmpegPath,
+          });
+          console.log("  reCAPTCHA solved via audio!");
+
+          // Check for Xiaomi custom 2nd captcha (text/image)
+          console.log(
+            "  Waiting for next step (custom captcha modal or OTP screen)...",
+          );
+          let captchaVisible = false;
+          let otpVisible = false;
+          const checkDeadline = Date.now() + 15000;
+
+          while (Date.now() < checkDeadline) {
+            const customImg = page
+              .locator(
+                '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
+              )
+              .first();
+            if (
+              await customImg.isVisible({ timeout: 60000 }).catch(() => false)
+            ) {
+              captchaVisible = true;
+              break;
+            }
+            const otpInput = page
+              .locator(
+                'input[maxlength="6"], input[maxlength="4"], input[type="number"], input[placeholder*="code" i], input[placeholder*="OTP" i], input[placeholder*="verif" i]',
+              )
+              .first();
+            if (
+              await otpInput.isVisible({ timeout: 60000 }).catch(() => false)
+            ) {
+              otpVisible = true;
+              break;
+            }
+            await sleep(500);
+          }
+
+          if (captchaVisible) {
+            const customImg = page
+              .locator(
+                '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
+              )
+              .first();
+            console.log(
+              "  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving with CapMonster ImageToText...",
+            );
+
+            const solved = await solveImageCaptcha(customImg, page, {
+              apiKey: CONFIG.capmonsterApiKey,
+            });
+            if (solved) {
+              console.log("  Custom captcha solved!");
+            } else {
+              console.log("  >>> CapMonster failed — please solve manually.");
+              console.log("  >>> Playing manual-captcha sound alert");
+              await playSound(SOUNDS.manualCaptcha);
+              const manualSolved = await waitForCaptchaSolved(
+                page,
+                CONFIG.captchaSolveTimeout,
+              );
+              if (!manualSolved) {
+                console.log("  Timeout, closing browser");
+                await browser.close();
+                process.exit(1);
+              } else {
+                console.log("  >>> Manual captcha solved, continuing...");
+              }
+            }
+          } else if (otpVisible) {
+            console.log(
+              "  Directly advanced to OTP screen, no custom captcha needed.",
+            );
+          } else {
+            console.log(
+              "  [WARN] Neither custom captcha nor OTP screen detected after 15s.",
+            );
+          }
+        } catch (e) {
+          if (e.message === "GOOGLE_RATE_LIMITED") {
+            console.log(
+              "  >>> Google blocked this IP/network ('automated queries').",
+            );
+            if (CONFIG.proxy) {
+              addToBlacklist(
+                CONFIG.proxy,
+                "automated_queries",
+                CONFIG.blacklistDuration,
+              );
+            }
+            console.log(
+              "  >>> Auto audio solve will NOT work — IP is rate-limited.",
+            );
+            console.log(
+              "  >>> Fix: use a residential/mobile proxy (PROXY env), or solve manually below.",
+            );
+            if (process.env.AUTO_SKIP_RATE_LIMIT === "1") {
+              console.log(
+                "  >>> AUTO_SKIP_RATE_LIMIT=1 — aborting run, loop will skip.",
+              );
+              process.exitCode = 1;
+              return;
+            }
+          } else {
+            console.log(`  Audio solver failed: ${e.message}`);
+            console.log("  Falling back to manual solve...");
+          }
+          console.log("  >>> Playing manual-captcha sound alert");
+          await playSound(SOUNDS.manualCaptcha);
+          await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
+        }
       }
     } else if (CONFIG.captchaMode === "2captcha" && CONFIG.captchaApiKey) {
       console.log("  Auto-solving captcha with 2captcha...");
@@ -674,9 +900,9 @@ async function register() {
       console.log(
         "  >>> CAPTCHA: Please solve the captcha manually in the browser.",
       );
-      console.log("  >>> Auto-detecting when solved...");
       console.log("  >>> Playing manual-captcha sound alert");
       await playSound(SOUNDS.manualCaptcha);
+      console.log("  >>> Auto-detecting when solved...");
       const captchaSolved = await waitForCaptchaSolved(
         page,
         CONFIG.captchaSolveTimeout,
@@ -694,7 +920,7 @@ async function register() {
 
     if (!otp) {
       console.log("  >>> Playing error sound alert");
-      await playSound(SOUNDS.manualError);
+      await playSound(SOUNDS.error);
       console.log("  TIMEOUT: No OTP received. Check browser manually.");
       console.log("  Browser stays open for manual intervention.");
       // await page.screenshot({ path: 'timeout.png' });
@@ -735,7 +961,7 @@ async function register() {
     // Step 8: Wait for OAuth redirect chain to platform console
     console.log("[8/12] Waiting for OAuth redirect to platform console...");
     await page
-      .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 60000 })
+      .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 })
       .catch(async () => {
         console.log("  Redirect not detected, navigating manually...");
         await page.goto(CONFIG.consoleUrl, {
@@ -944,35 +1170,58 @@ async function register() {
 
     // Validate API key format (sk-*) to prevent clipboard paste bugs
     if (apiKey && !apiKey.startsWith("sk-")) {
-      console.log(`  [WARN] Key format invalid (not sk-*): "${apiKey.substring(0, 20)}..."`);
+      console.log(
+        `  [WARN] Key format invalid (not sk-*): "${apiKey.substring(0, 20)}..."`,
+      );
       console.log("  [WARN] Creating new API key to replace invalid one...");
       apiKey = "";
     }
 
     // If key is missing or invalid, retry extraction
-    if (!apiKey || apiKey === "NOT_FOUND") {
-      console.log("  [WARN] Valid API key not found, attempting to create new one...");
+    if (!apiKey || apiKey === "-") {
+      console.log(
+        "  [WARN] Valid API key not found, attempting to create new one...",
+      );
       // Re-navigate to API key page and create
       for (const p of ["/apikey", "/developer/apikey", "/developer"]) {
         try {
-          await page.goto(CONFIG.consoleUrl + p, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await page.goto(CONFIG.consoleUrl + p, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
+          });
           await sleep(2000);
           break;
         } catch (_) {}
       }
       // Try create button
-      const retryCreateBtn = page.locator('button:has-text("Create API Key"), button:has-text("Create")').first();
-      if (await retryCreateBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      const retryCreateBtn = page
+        .locator('button:has-text("Create API Key"), button:has-text("Create")')
+        .first();
+      if (
+        await retryCreateBtn.isVisible({ timeout: 5000 }).catch(() => false)
+      ) {
         await retryCreateBtn.click();
         await sleep(1500);
-        const retryNameInput = page.locator('input[placeholder*="name" i], input[placeholder*="Name" i], input[type="text"]').first();
-        if (await retryNameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const retryNameInput = page
+          .locator(
+            'input[placeholder*="name" i], input[placeholder*="Name" i], input[type="text"]',
+          )
+          .first();
+        if (
+          await retryNameInput.isVisible({ timeout: 3000 }).catch(() => false)
+        ) {
           await retryNameInput.fill("");
           await retryNameInput.fill(CONFIG.apiKeyName);
           await sleep(500);
         }
-        const retryConfirm = page.locator('button:has-text("Confirm"), button:has-text("OK"), button:has-text("Create")').first();
-        if (await retryConfirm.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const retryConfirm = page
+          .locator(
+            'button:has-text("Confirm"), button:has-text("OK"), button:has-text("Create")',
+          )
+          .first();
+        if (
+          await retryConfirm.isVisible({ timeout: 3000 }).catch(() => false)
+        ) {
           await retryConfirm.click();
           await sleep(3000);
         }
@@ -982,7 +1231,11 @@ async function register() {
         const el = page.locator(selector).first();
         if (await el.isVisible({ timeout: 5000 }).catch(() => false)) {
           const text = await el.textContent().catch(() => "");
-          if (text && text.trim().length > 10 && text.trim().startsWith("sk-")) {
+          if (
+            text &&
+            text.trim().length > 10 &&
+            text.trim().startsWith("sk-")
+          ) {
             apiKey = text.trim();
             break;
           }
@@ -990,142 +1243,139 @@ async function register() {
       }
       if (!apiKey || !apiKey.startsWith("sk-")) {
         console.log("  [WARN] Could not get valid sk-* key after retry.");
-        apiKey = apiKey || "NOT_FOUND";
+        apiKey = apiKey || "-";
       }
     }
 
-    // Save to CSV
-    const csvHeaders = "timestamp,email,password,api_key_name,api_key";
-    const csvRow = [
-      new Date().toISOString(),
-      email,
-      CONFIG.password,
-      CONFIG.apiKeyName,
-      apiKey || "NOT_FOUND",
-    ]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(",");
+    if (apiKey !== "-") {
+      // Save to CSV
+      const csvHeaders = "timestamp,email,password,api_key_name,api_key";
+      const csvRow = [
+        new Date().toISOString(),
+        email,
+        CONFIG.password,
+        CONFIG.apiKeyName,
+        apiKey,
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(",");
 
-    const csvPath = CONFIG.outputFile;
-    const exists = fs.existsSync(csvPath);
-    if (!exists) {
-      fs.writeFileSync(csvPath, csvHeaders + "\n", "utf8");
-    }
-    fs.appendFileSync(csvPath, csvRow + "\n", "utf8");
-    console.log(`  Saved to: ${csvPath}`);
-
-    saveWorkingProxy(SELECTED_PROXY, SELECTED_COUNTRY);
-
-    // Close the "API Key Successfully Created" modal before proceeding
-    try {
-      const titleModal = page
-        .locator('.ant-modal-title:has-text("API Key Successfully Created")')
-        .first();
-      const modalVisible = await titleModal
-        .isVisible({ timeout: 60000 })
-        .catch(() => false);
-      if (modalVisible) {
-        const closeBtn = page
-          .locator('button.ant-modal-close[aria-label="Close"]')
-          .first();
-        if (await closeBtn.isVisible({ timeout: 60000 }).catch(() => false)) {
-          await closeBtn.click();
-        } else {
-          await page
-            .locator('button:has-text("Close")')
-            .first()
-            .click()
-            .catch(() => {});
-        }
-        await sleep(500);
-        console.log("  API Key modal closed");
+      const csvPath = CONFIG.outputFile;
+      const exists = fs.existsSync(csvPath);
+      if (!exists) {
+        fs.writeFileSync(csvPath, csvHeaders + "\n", "utf8");
       }
-    } catch (e) {
-      console.log(`  [WARN] Failed to close API Key modal: ${e.message}`);
-    }
+      fs.appendFileSync(csvPath, csvRow + "\n", "utf8");
+      console.log(`  Saved to: ${csvPath}`);
 
-    // Step 12: Redeem invite code (if configured)
-    if (process.env.REFERRAL_CODE) {
-      console.log("[12/12] Redeeming invite code...");
+      saveWorkingProxy(SELECTED_PROXY, SELECTED_COUNTRY);
 
-      const browseDelay = rand(12000, 18000);
-      console.log(
-        `  [human] Browsing dashboard for ${Math.round(browseDelay / 1000)}s to avoid risk control...`,
-      );
-      await sleep(browseDelay);
-
-      for (let i = 0; i < rand(2, 4); i++) {
-        await page.mouse.wheel(0, rand(100, 300));
-        await sleep(rand(800, 1500));
-      }
-      await page.mouse.move(rand(200, 600), rand(200, 400));
-      await sleep(rand(1000, 2000));
-
+      // Close the "API Key Successfully Created" modal before proceeding
       try {
-        const inviteBtn = page
-          .locator('button:has-text("Enter invite code")')
+        const titleModal = page
+          .locator('.ant-modal-title:has-text("API Key Successfully Created")')
           .first();
-        if (
-          !(await inviteBtn.isVisible({ timeout: 10000 }).catch(() => false))
-        ) {
-          console.log(
-            "  [INFO] 'Enter invite code' button not visible, skipping.",
-          );
-        } else {
-          await inviteBtn.click();
-          console.log("  Invite code modal opened");
-          await sleep(rand(1500, 3000));
-
-          const otpCodeInputs = page.locator('input[aria-label^="OTP Input"]');
-          const code = process.env.REFERRAL_CODE;
-          for (let i = 0; i < code.length && i < 6; i++) {
-            await otpCodeInputs.nth(i).fill(code[i]);
-            await sleep(rand(200, 500));
-          }
-          await sleep(rand(1000, 2000));
-
-          const redeemBtn = page.locator('button:has-text("Redeem")').first();
-          if (
-            await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false)
-          ) {
-            await redeemBtn.click();
-            console.log(`  Invite code submitted: ${code}`);
-            await sleep(rand(3000, 5000));
-
-            const riskError = await page
-              .locator("text=/risk control|restrictions|contact customer/i")
-              .first()
-              .isVisible({ timeout: 3000 })
-              .catch(() => false);
-
-            if (riskError) {
-              console.log("  [WARN] Risk control detected, skipping referral.");
-            } else {
-              console.log("  Invite code redeemed successfully");
-            }
+        const modalVisible = await titleModal
+          .isVisible({ timeout: 60000 })
+          .catch(() => false);
+        if (modalVisible) {
+          const closeBtn = page
+            .locator('button.ant-modal-close[aria-label="Close"]')
+            .first();
+          if (await closeBtn.isVisible({ timeout: 60000 }).catch(() => false)) {
+            await closeBtn.click();
           } else {
-            console.log("  [WARN] Redeem button not found");
+            await page
+              .locator('button:has-text("Close")')
+              .first()
+              .click()
+              .catch(() => {});
           }
+          await sleep(500);
+          console.log("  API Key modal closed");
         }
       } catch (e) {
-        console.log(`  Invite code redemption failed: ${e.message}`);
+        console.log(`  [WARN] Failed to close API Key modal: ${e.message}`);
       }
-    }
 
-    console.log("  >>> Playing success sound alert");
-    await playSound(SOUNDS.success);
+      // Step 12: Redeem invite code (if configured)
+      if (
+        process.env.USE_REFERRAL_CODE === "true" &&
+        process.env.REFERRAL_CODE
+      ) {
+        console.log("[12/12] Redeeming invite code...");
+        try {
+          const inviteBtn = page
+            .locator('button:has-text("Enter invite code")')
+            .first();
+          if (
+            !(await inviteBtn.isVisible({ timeout: 10000 }).catch(() => false))
+          ) {
+            console.log(
+              "  [INFO] 'Enter invite code' button not visible, skipping.",
+            );
+          } else {
+            await inviteBtn.click();
+            console.log("  Invite code modal opened");
+            await sleep(rand(1500, 3000));
 
-    // Auto extract keys to omniroute.txt
-    try {
-      const extractResult = extractKeys(
-        path.join(ROOT, "keys", "keys.csv"),
-        path.join(ROOT, "keys", "omniroute.txt"),
-      );
-      if (extractResult.added > 0) {
-        console.log(`  [extract] ${extractResult.added} new key(s) added to omniroute.txt`);
+            const otpCodeInputs = page.locator(
+              'input[aria-label^="OTP Input"]',
+            );
+            const code = process.env.REFERRAL_CODE;
+            for (let i = 0; i < code.length && i < 6; i++) {
+              await otpCodeInputs.nth(i).fill(code[i]);
+              await sleep(rand(200, 500));
+            }
+            await sleep(rand(1000, 2000));
+
+            const redeemBtn = page.locator('button:has-text("Redeem")').first();
+            if (
+              await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false)
+            ) {
+              await redeemBtn.click();
+              console.log(`  Invite code submitted: ${code}`);
+              await sleep(rand(3000, 5000));
+
+              const riskError = await page
+                .locator("text=/risk control|restrictions|contact customer/i")
+                .first()
+                .isVisible({ timeout: 3000 })
+                .catch(() => false);
+
+              if (riskError) {
+                console.log(
+                  "  [WARN] Risk control detected, skipping referral.",
+                );
+              } else {
+                console.log("  Invite code redeemed successfully");
+              }
+            } else {
+              console.log("  [WARN] Redeem button not found");
+            }
+          }
+        } catch (e) {
+          console.log(`  Invite code redemption failed: ${e.message}`);
+        }
       }
-    } catch (e) {
-      console.log(`  [extract] Failed: ${e.message}`);
+
+      console.log("  >>> Playing success sound alert");
+      await playSound(SOUNDS.success);
+
+      // Auto extract keys to omniroute.txt
+      try {
+        const extractResult = extractKeys(
+          path.join(ROOT, "keys", "keys.csv"),
+          path.join(ROOT, "keys", "omniroute.txt"),
+        );
+        if (extractResult.added > 0) {
+          console.log(
+            `  [extract] ${extractResult.added} new key(s) added to omniroute.txt`,
+          );
+        }
+      } catch (e) {
+        console.log(`  [extract] Failed: ${e.message}`);
+      }
     }
 
     console.log("\n========================================");
@@ -1148,11 +1398,12 @@ async function register() {
       await sleep(1000);
     } else {
       console.log("  >>> Playing error sound alert");
-      await playSound(SOUNDS.manualError);
+      await playSound(SOUNDS.error);
       console.log("Error screenshot saved: error.png");
       await sleep(10000);
     }
   } finally {
+    disableStepKeypress();
     await browser.close();
   }
 }

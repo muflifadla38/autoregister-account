@@ -1,21 +1,26 @@
 // loops/xiaomi.js — Keeps re-running register.js xiaomi with proxy rotation & delays
 // Keypress while a run is in progress:
 //   s / n  → skip current run (kill child, rotate proxy)
+//   d      → skip current step inside register script
 //   q      → stop loop cleanly (print report and exit)
 // Ctrl+C also stops cleanly.
 const { spawn } = require("child_process");
 const path = require("path");
-const { isBlacklisted, cleanExpiredBlacklist, loadProxies } = require("../utils/proxy.js");
+const {
+  isBlacklisted,
+  cleanExpiredBlacklist,
+  loadProxies,
+} = require("../utils/proxy.js");
 
 const ROOT = path.join(__dirname, "..");
 
 cleanExpiredBlacklist();
-const PROXIES =
-  process.env.USE_PROXY_CSV === "true"
-    ? loadProxies(path.join(ROOT, "proxies", "rechecked.csv"))
-    : process.env.PROXIES
-      ? process.env.PROXIES.split(",").map((p) => ({ proxy: p.trim(), country: "" }))
-      : [];
+const PROXIES = process.env.PROXIES
+  ? process.env.PROXIES.split(",").map((p) => ({
+      proxy: p.trim(),
+      country: "",
+    }))
+  : loadProxies(path.join(ROOT, "proxies", "rechecked.csv"));
 const available = PROXIES.filter((item) => !isBlacklisted(item.proxy));
 console.log(
   `Loaded ${PROXIES.length} proxies (${available.length} available, ${PROXIES.length - available.length} blacklisted).`,
@@ -29,11 +34,15 @@ let running = false;
 let stopping = false;
 let keypressEnabled = false;
 
-function getProxyInfo() {
-  if (available.length === 0) return { proxy: "", country: "" };
-  const item = available[count % available.length];
-  if (isBlacklisted(item.proxy)) return { proxy: "", country: "" };
-  return item;
+function getProxyInfo(env) {
+  if (env.USE_PROXY) {
+    if (available.length === 0) return { proxy: "", country: "" };
+    const item = available[count % available.length];
+    if (isBlacklisted(item.proxy)) return { proxy: "", country: "" };
+    return item;
+  }
+
+  return { proxy: null, country: null };
 }
 
 function printReport() {
@@ -70,7 +79,7 @@ function disableKeypress() {
 
 function onKey(chunk) {
   const s = String(chunk);
-  // Ctrl+C
+  // Ctrl+C or q
   if (s === "\u0003" || s === "q" || s === "Q") {
     console.log("\n[loop] Stop requested.");
     stopping = true;
@@ -90,15 +99,22 @@ function onKey(chunk) {
     }
     return;
   }
+  // Skip current step (forward to child as 'd' keypress)
+  if (s === "d" || s === "D") {
+    if (running && currentChild) {
+      console.log("\n[loop] Step skip requested.");
+    }
+  }
 }
 
 function run() {
   count++;
-  const { proxy, country } = getProxyInfo();
-  console.log(
-    `\n=== RUN #${count} ${proxy ? `(proxy: ${proxy.includes("@") ? proxy.split("@").pop() : proxy} [${country || "-"}])` : ""} ===\n`,
-  );
-  console.log("[loop] Press 's' to skip this run · 'q' to quit");
+  const { proxy, country } = getProxyInfo(process.env);
+  const proxyLabel = proxy
+    ? `proxy: ${proxy.includes("@") ? proxy.split("@").pop() : proxy} (Country: ${country || "N/A"})`
+    : "no proxy";
+  console.log(`\n=== RUN #${count} (${proxyLabel}) ===\n`);
+  console.log("[loop] Press 's' to skip run · 'd' to skip step · 'q' to quit");
 
   const env = { ...process.env, AUTO_SKIP_RATE_LIMIT: "1" };
   if (proxy) env.PROXY = proxy;
