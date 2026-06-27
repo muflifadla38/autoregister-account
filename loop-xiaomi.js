@@ -6,64 +6,18 @@
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { isBlacklisted, cleanExpiredBlacklist, loadProxies } = require("./utils/proxy.js");
 
-function parseCsvLine(line) {
-  const cols = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === "," && !inQuotes) {
-      cols.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  cols.push(current);
-  return cols;
-}
-
-function loadProxiesFromCsv(csvPath) {
-  if (!fs.existsSync(csvPath)) {
-    console.log(`[loop] CSV not found: ${csvPath}`);
-    return [];
-  }
-  const content = fs.readFileSync(csvPath, "utf8").trim();
-  const lines = content.split("\n");
-  if (lines.length < 2) return [];
-  const header = parseCsvLine(lines[0]);
-  const proxyIdx = header.indexOf("proxy");
-  if (proxyIdx === -1) {
-    console.log("[loop] 'proxy' column not found in CSV header");
-    return [];
-  }
-  const proxies = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = parseCsvLine(lines[i]);
-    const p = (cols[proxyIdx] || "").trim();
-    if (p && (p.startsWith("http") || p.startsWith("socks"))) {
-      proxies.push(p);
-    }
-  }
-  return proxies;
-}
-
+cleanExpiredBlacklist();
 const PROXIES =
   process.env.USE_PROXY_CSV === "true"
-    ? loadProxiesFromCsv(path.join(__dirname, "proxies", "rechecked.csv"))
+    ? loadProxies(path.join(__dirname, "proxies", "rechecked.csv"))
     : process.env.PROXIES
-      ? process.env.PROXIES.split(",").map((p) => p.trim())
+      ? process.env.PROXIES.split(",").map((p) => ({ proxy: p.trim(), country: "" }))
       : [];
+const available = PROXIES.filter((item) => !isBlacklisted(item.proxy));
 console.log(
-  `Loaded ${PROXIES.length} proxies from ${process.env.USE_PROXY_CSV === "true" ? "proxies/rechecked.csv" : "environment variable"}.`,
+  `Loaded ${PROXIES.length} proxies (${available.length} available, ${PROXIES.length - available.length} blacklisted).`,
 );
 
 let count = 0;
@@ -74,9 +28,11 @@ let running = false;
 let stopping = false;
 let keypressEnabled = false;
 
-function getProxy() {
-  if (PROXIES.length === 0) return "";
-  return PROXIES[count % PROXIES.length];
+function getProxyInfo() {
+  if (available.length === 0) return { proxy: "", country: "" };
+  const item = available[count % available.length];
+  if (isBlacklisted(item.proxy)) return { proxy: "", country: "" };
+  return item;
 }
 
 function printReport() {
@@ -138,14 +94,15 @@ function onKey(chunk) {
 
 function run() {
   count++;
-  const proxy = getProxy();
+  const { proxy, country } = getProxyInfo();
   console.log(
-    `\n=== RUN #${count} ${proxy ? `(proxy: ${proxy.includes("@") ? proxy.split("@").pop() : proxy})` : ""} ===\n`,
+    `\n=== RUN #${count} ${proxy ? `(proxy: ${proxy.includes("@") ? proxy.split("@").pop() : proxy} [${country || "-"}])` : ""} ===\n`,
   );
   console.log("[loop] Press 's' to skip this run · 'q' to quit");
 
   const env = { ...process.env, AUTO_SKIP_RATE_LIMIT: "1" };
   if (proxy) env.PROXY = proxy;
+  if (country) env.PROXY_COUNTRY = country;
 
   running = true;
   enableKeypress();

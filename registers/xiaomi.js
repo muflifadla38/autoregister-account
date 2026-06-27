@@ -19,7 +19,7 @@ const {
   waitForCaptchaSolved,
 } = require("../utils/captcha.js");
 const { solveImageCaptcha } = require("../utils/capmonster.js");
-const { loadProxies } = require("../utils/proxy.js");
+const { loadProxies, isBlacklisted, addToBlacklist, cleanExpiredBlacklist } = require("../utils/proxy.js");
 const { extractKeys } = require("../utils/extract-keys.js");
 
 const ffmpegPath = findFfmpeg();
@@ -53,41 +53,109 @@ const CONFIG = {
   capmonsterApiKey: process.env.CAPMONSTER_API_KEY || "",
   // Proxy (optional): 'http://host:port' or empty to disable
   proxy: process.env.PROXY || "",
+  // Blacklist duration in minutes for proxies flagged by Google
+  blacklistDuration: 10,
 };
 
 // sleep, rand, and typeHuman functions are now imported from ./utils/helpers.js
 
-function saveWorkingProxy(proxy) {
+function formatIndonesianDate(date) {
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const d = date.getDate();
+  const m = months[date.getMonth()];
+  const y = date.getFullYear();
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${d} ${m} ${y} ${h}:${min}`;
+}
+
+function saveWorkingProxy(proxy, country) {
   if (!proxy) return;
   const file = path.join(ROOT, "proxies", "worked.csv");
   const existing = new Set();
   if (fs.existsSync(file)) {
     const lines = fs.readFileSync(file, "utf8").trim().split("\n");
     for (let i = 1; i < lines.length; i++) {
-      const p = lines[i].trim();
-      if (p) existing.add(p);
+      const cols = lines[i].split(",");
+      if (cols[0]) existing.add(cols[0].trim());
     }
   }
   if (existing.has(proxy)) return;
   if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, "proxy\n", "utf8");
+    fs.writeFileSync(file, "proxy,country,timestamp\n", "utf8");
   }
-  fs.appendFileSync(file, proxy + "\n", "utf8");
-  console.log(`  [proxy] Working proxy saved: ${proxy}`);
+  const timestamp = formatIndonesianDate(new Date());
+  fs.appendFileSync(file, `${proxy},${country || ""},${timestamp}\n`, "utf8");
+  console.log(`  [proxy] Working proxy saved: ${proxy} [${country || "-"}] (${timestamp})`);
 }
 
 const FREE_PROXIES =
   process.env.USE_PROXY_CSV === "true"
     ? loadProxies(path.join(ROOT, "proxies", "rechecked.csv"))
     : process.env.PROXIES
-      ? process.env.PROXIES.split(",").map((p) => p.trim())
+      ? process.env.PROXIES.split(",").map((p) => ({ proxy: p.trim(), country: "" }))
       : [];
 
+cleanExpiredBlacklist();
 console.log(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`);
+
+const COUNTRY_PROFILES = {
+  US: { locale: "en-US", timezone: "America/New_York",    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  GB: { locale: "en-GB", timezone: "Europe/London",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  DE: { locale: "de-DE", timezone: "Europe/Berlin",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  FR: { locale: "fr-FR", timezone: "Europe/Paris",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  JP: { locale: "ja-JP", timezone: "Asia/Tokyo",          ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
+  KR: { locale: "ko-KR", timezone: "Asia/Seoul",          ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  SG: { locale: "en-SG", timezone: "Asia/Singapore",      ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  ID: { locale: "id-ID", timezone: "Asia/Jakarta",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  BR: { locale: "pt-BR", timezone: "America/Sao_Paulo",   ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  AU: { locale: "en-AU", timezone: "Australia/Sydney",    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
+  NL: { locale: "nl-NL", timezone: "Europe/Amsterdam",    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  IN: { locale: "en-IN", timezone: "Asia/Kolkata",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  HK: { locale: "en-HK", timezone: "Asia/Hong_Kong",     ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
+  TH: { locale: "th-TH", timezone: "Asia/Bangkok",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  VN: { locale: "vi-VN", timezone: "Asia/Ho_Chi_Minh",   ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  MY: { locale: "ms-MY", timezone: "Asia/Kuala_Lumpur",   ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  PH: { locale: "en-PH", timezone: "Asia/Manila",         ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  TW: { locale: "zh-TW", timezone: "Asia/Taipei",        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  CN: { locale: "zh-CN", timezone: "Asia/Shanghai",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  RU: { locale: "ru-RU", timezone: "Europe/Moscow",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  TR: { locale: "tr-TR", timezone: "Europe/Istanbul",     ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  PL: { locale: "pl-PL", timezone: "Europe/Warsaw",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  IT: { locale: "it-IT", timezone: "Europe/Rome",         ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  ES: { locale: "es-ES", timezone: "Europe/Madrid",       ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+  CA: { locale: "en-CA", timezone: "America/Toronto",     ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "macOS" },
+  _default: { locale: "en-US", timezone: "America/New_York", ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", platform: "Windows" },
+};
+
+function getCountryProfile(country) {
+  const c = (country || "").toUpperCase();
+  return COUNTRY_PROFILES[c] || COUNTRY_PROFILES._default;
+}
+
+let SELECTED_PROXY = "";
+let SELECTED_COUNTRY = "";
+
 async function getRandomProxy() {
-  if (CONFIG.proxy) return CONFIG.proxy;
+  if (CONFIG.proxy) {
+    if (isBlacklisted(CONFIG.proxy)) {
+      console.log(`  [blacklist] Configured proxy is blacklisted, skipping.`);
+      return "";
+    }
+    SELECTED_PROXY = CONFIG.proxy;
+    SELECTED_COUNTRY = process.env.PROXY_COUNTRY || "";
+    return CONFIG.proxy;
+  }
   if (FREE_PROXIES.length === 0) return "";
-  return FREE_PROXIES[Math.floor(Math.random() * FREE_PROXIES.length)];
+  const available = FREE_PROXIES.filter((item) => !isBlacklisted(item.proxy));
+  if (available.length === 0) {
+    console.log(`  [blacklist] All proxies are blacklisted!`);
+    return "";
+  }
+  const picked = available[Math.floor(Math.random() * available.length)];
+  SELECTED_PROXY = picked.proxy;
+  SELECTED_COUNTRY = picked.country || "";
+  return picked.proxy;
 }
 
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
@@ -311,36 +379,24 @@ async function register() {
     );
   }
   const browser = await chromium.launch(launchOpts);
-  const REALISTIC_UAS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0",
-  ];
-  const TIMEZONES = [
-    "Asia/Jakarta",
-    "Asia/Singapore",
-    "Asia/Tokyo",
-    "America/New_York",
-    "Europe/London",
-    "Asia/Hong_Kong",
-  ];
-  const LOCALES = ["en-US", "en-GB", "id-ID", "ja-JP"];
+  const profile = getCountryProfile(SELECTED_COUNTRY);
+  console.log(`  [fingerprint] Country: ${SELECTED_COUNTRY || "N/A"} → locale=${profile.locale}, tz=${profile.timezone}, platform=${profile.platform}`);
+
   const contextOpts = {
     ignoreHTTPSErrors: true,
-    userAgent: REALISTIC_UAS[Math.floor(Math.random() * REALISTIC_UAS.length)],
-    viewport: { width: 1366, height: 768 },
-    locale: LOCALES[Math.floor(Math.random() * LOCALES.length)],
-    timezoneId: TIMEZONES[Math.floor(Math.random() * TIMEZONES.length)],
+    userAgent: profile.ua,
+    viewport: { width: profile.platform === "macOS" ? 1440 : 1366, height: profile.platform === "macOS" ? 900 : 768 },
+    locale: profile.locale,
+    timezoneId: profile.timezone,
     colorScheme: "light",
     isMobile: false,
     hasTouch: false,
     extraHTTPHeaders: {
-      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Language": `${profile.locale.replace("-", "_")},en;q=0.9`,
       "sec-ch-ua":
         '"Chromium";v="126", "Not/A)Brand";v="8", "Google Chrome";v="126"',
       "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": '"Windows"',
+      "sec-ch-ua-platform": `"${profile.platform}"`,
     },
   };
   const context = await browser.newContext(contextOpts);
@@ -440,10 +496,13 @@ async function register() {
           .catch(() => {});
         const blocked = await page
           .locator(
-            "text=/automated queries|unusual traffic from your computer|automated requests/i",
+            "text=/Your computer or network may be sending automated queries|automated queries|unusual traffic from your computer|automated requests/i",
           )
           .first();
         if (await blocked.isVisible({ timeout: 6000000 }).catch(() => false)) {
+          if (CONFIG.proxy) {
+            addToBlacklist(CONFIG.proxy, "automated_queries", CONFIG.blacklistDuration);
+          }
           throw new Error("GOOGLE_RATE_LIMITED");
         }
       } catch (_) {}
@@ -581,6 +640,9 @@ async function register() {
           console.log(
             "  >>> Google blocked this IP/network ('automated queries').",
           );
+          if (CONFIG.proxy) {
+            addToBlacklist(CONFIG.proxy, "automated_queries", CONFIG.blacklistDuration);
+          }
           console.log(
             "  >>> Auto audio solve will NOT work — IP is rate-limited.",
           );
@@ -952,7 +1014,7 @@ async function register() {
     fs.appendFileSync(csvPath, csvRow + "\n", "utf8");
     console.log(`  Saved to: ${csvPath}`);
 
-    saveWorkingProxy(CONFIG.proxy);
+    saveWorkingProxy(SELECTED_PROXY, SELECTED_COUNTRY);
 
     // Close the "API Key Successfully Created" modal before proceeding
     try {
@@ -999,7 +1061,7 @@ async function register() {
       await page.mouse.move(rand(200, 600), rand(200, 400));
       await sleep(rand(1000, 2000));
 
-      async function attemptRedeem(attempt) {
+      try {
         const inviteBtn = page
           .locator('button:has-text("Enter invite code")')
           .first();
@@ -1009,78 +1071,40 @@ async function register() {
           console.log(
             "  [INFO] 'Enter invite code' button not visible, skipping.",
           );
-          return false;
-        }
+        } else {
+          await inviteBtn.click();
+          console.log("  Invite code modal opened");
+          await sleep(rand(1500, 3000));
 
-        await inviteBtn.click();
-        console.log(`  Invite code modal opened (attempt ${attempt})`);
-        await sleep(rand(1500, 3000));
-
-        const otpCodeInputs = page.locator('input[aria-label^="OTP Input"]');
-        const code = process.env.REFERRAL_CODE;
-        for (let i = 0; i < code.length && i < 6; i++) {
-          await otpCodeInputs.nth(i).fill(code[i]);
-          await sleep(rand(200, 500));
-        }
-        await sleep(rand(1000, 2000));
-
-        const redeemBtn = page.locator('button:has-text("Redeem")').first();
-        if (
-          !(await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false))
-        ) {
-          console.log("  [WARN] Redeem button not found");
-          return false;
-        }
-
-        await redeemBtn.click();
-        console.log(`  Invite code submitted: ${code}`);
-        await sleep(rand(3000, 5000));
-
-        const riskError = await page
-          .locator("text=/risk control|restrictions|contact customer/i")
-          .first()
-          .isVisible({ timeout: 3000 })
-          .catch(() => false);
-
-        if (!riskError) {
-          console.log(`  Invite code redeemed successfully`);
-          await sleep(rand(2000, 3000));
-          return true;
-        }
-
-        console.log(`  [WARN] Risk control detected on attempt ${attempt}`);
-        await page
-          .locator(
-            'button:has-text("OK"), button:has-text("Close"), button:has-text("Confirm")',
-          )
-          .first()
-          .click()
-          .catch(() => {});
-        await sleep(rand(2000, 3000));
-        return false;
-      }
-
-      try {
-        let success = await attemptRedeem(1);
-        if (!success) {
-          const retryDelay = rand(20000, 30000);
-          console.log(
-            `  [human] Waiting ${Math.round(retryDelay / 1000)}s before retry...`,
-          );
-          await sleep(retryDelay);
-
-          for (let i = 0; i < rand(3, 5); i++) {
-            await page.mouse.wheel(0, rand(100, 400));
-            await sleep(rand(600, 1200));
+          const otpCodeInputs = page.locator('input[aria-label^="OTP Input"]');
+          const code = process.env.REFERRAL_CODE;
+          for (let i = 0; i < code.length && i < 6; i++) {
+            await otpCodeInputs.nth(i).fill(code[i]);
+            await sleep(rand(200, 500));
           }
-          await page.mouse.move(rand(100, 800), rand(100, 500));
           await sleep(rand(1000, 2000));
 
-          success = await attemptRedeem(2);
-          if (!success) {
-            console.log(
-              "  [WARN] Risk control still active after retry, skipping referral.",
-            );
+          const redeemBtn = page.locator('button:has-text("Redeem")').first();
+          if (
+            await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false)
+          ) {
+            await redeemBtn.click();
+            console.log(`  Invite code submitted: ${code}`);
+            await sleep(rand(3000, 5000));
+
+            const riskError = await page
+              .locator("text=/risk control|restrictions|contact customer/i")
+              .first()
+              .isVisible({ timeout: 3000 })
+              .catch(() => false);
+
+            if (riskError) {
+              console.log("  [WARN] Risk control detected, skipping referral.");
+            } else {
+              console.log("  Invite code redeemed successfully");
+            }
+          } else {
+            console.log("  [WARN] Redeem button not found");
           }
         }
       } catch (e) {

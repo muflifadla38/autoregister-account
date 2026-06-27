@@ -9,6 +9,6 @@ run({
   fetch: false,
   mode: "deep",
   deadTarget: 0,
-  input: fs.existsSync(rechecked) ? rechecked : checked,
+  input: checked,
   output: rechecked,
 });

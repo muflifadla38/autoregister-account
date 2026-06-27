@@ -249,6 +249,24 @@ async function runBatch(items, concurrency, fn) {
   return results;
 }
 
+function formatIndonesianDate(date) {
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const d = date.getDate();
+  const m = months[date.getMonth()];
+  const y = date.getFullYear();
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${d} ${m} ${y} ${h}:${min}`;
+}
+
+function formatIsoToLocal(isoStr) {
+  try {
+    return formatIndonesianDate(new Date(isoStr));
+  } catch {
+    return isoStr;
+  }
+}
+
 function cleanFreeProxiesCsv(inputPath) {
   const raw = fs.readFileSync(inputPath, "utf8").trim();
   const lines = raw.split("\n");
@@ -257,8 +275,12 @@ function cleanFreeProxiesCsv(inputPath) {
   const ipIdx = header.indexOf("ip");
   const portIdx = header.indexOf("port");
   const protoIdx = header.indexOf("protocols");
+  const latencyIdx = header.indexOf("latency_ms");
+  const lastAliveIdx = header.indexOf("last_alive_at");
+  const countryIdx = header.indexOf("country_code");
   if (ipIdx === -1 || portIdx === -1) return [];
   const proxies = [];
+  const stats = { total: 0, countries: {}, latencySum: 0, latencyCount: 0, oldest: null, newest: null };
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(",");
     const ip = (cols[ipIdx] || "").trim();
@@ -269,8 +291,44 @@ function cleanFreeProxiesCsv(inputPath) {
       const protos = cols[protoIdx].trim().split("|");
       if (protos.length > 0 && protos[0]) protocol = protos[0];
     }
-    proxies.push(`${protocol}://${ip}:${port}`);
+    const country = (countryIdx !== -1 && cols[countryIdx]) ? cols[countryIdx].trim() : "";
+    proxies.push({ proxy: `${protocol}://${ip}:${port}`, country: country || "" });
+    stats.total++;
+    if (country) {
+      stats.countries[country] = (stats.countries[country] || 0) + 1;
+    }
+    if (latencyIdx !== -1 && cols[latencyIdx]) {
+      const lat = parseFloat(cols[latencyIdx].trim());
+      if (!isNaN(lat) && lat > 0) {
+        stats.latencySum += lat;
+        stats.latencyCount++;
+      }
+    }
+    if (lastAliveIdx !== -1 && cols[lastAliveIdx]) {
+      const ts = cols[lastAliveIdx].trim();
+      if (ts) {
+        if (!stats.oldest || ts < stats.oldest) stats.oldest = ts;
+        if (!stats.newest || ts > stats.newest) stats.newest = ts;
+      }
+    }
   }
+
+  const topCountries = Object.entries(stats.countries)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([c, n]) => `${c}:${n}`)
+    .join(", ");
+  const avgLatency = stats.latencyCount > 0 ? Math.round(stats.latencySum / stats.latencyCount) : 0;
+
+  console.log(`\n  --- API Proxy Data ---`);
+  console.log(`  Total proxies  : ${stats.total}`);
+  console.log(`  Avg latency    : ${avgLatency}ms`);
+  if (stats.oldest) console.log(`  Oldest alive   : ${formatIsoToLocal(stats.oldest)}`);
+  if (stats.newest) console.log(`  Newest alive   : ${formatIsoToLocal(stats.newest)}`);
+  if (topCountries) console.log(`  Top countries  : ${topCountries}`);
+  console.log(`  File updated   : ${formatIndonesianDate(new Date())}`);
+  console.log();
+
   return proxies;
 }
 
@@ -279,25 +337,44 @@ function loadProxies(csvPath) {
   const raw = fs.readFileSync(csvPath, "utf8").trim();
   if (!raw) return [];
   const lines = raw.split("\n");
-  const proxies = [];
-  for (const line of lines) {
-    const p = line.trim();
-    if (!p) continue;
+  const items = [];
+  const seen = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (i === 0 && line.startsWith("proxy")) continue;
+    const commaIdx = line.indexOf(",");
+    let proxy, country;
+    if (commaIdx !== -1) {
+      proxy = line.substring(0, commaIdx).trim();
+      country = line.substring(commaIdx + 1).trim();
+    } else {
+      proxy = line.trim();
+      country = "";
+    }
     if (
-      p.startsWith("http") ||
-      p.startsWith("socks") ||
-      /^\d+\.\d+\.\d+\.\d+:\d+/.test(p)
+      proxy &&
+      (proxy.startsWith("http") || proxy.startsWith("socks") || /^\d+\.\d+\.\d+\.\d+:\d+/.test(proxy)) &&
+      !seen.has(proxy)
     ) {
-      proxies.push(ensureProtocol(p));
+      seen.add(proxy);
+      items.push({ proxy: ensureProtocol(proxy), country });
     }
   }
-  return [...new Set(proxies)];
+  return items;
 }
 
-function saveProxies(proxies, outputPath) {
+function saveProxies(items, outputPath) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  const content = proxies.length > 0 ? proxies.join("\n") + "\n" : "";
-  fs.writeFileSync(outputPath, content, "utf8");
+  const lines = ["proxy,country"];
+  for (const item of items) {
+    if (typeof item === "string") {
+      lines.push(`${item},`);
+    } else {
+      lines.push(`${item.proxy},${item.country || ""}`);
+    }
+  }
+  fs.writeFileSync(outputPath, lines.join("\n") + "\n", "utf8");
 }
 
 function dedup(csvPath) {
@@ -305,47 +382,55 @@ function dedup(csvPath) {
     console.error(`File not found: ${csvPath}`);
     return { before: 0, removed: 0, after: 0 };
   }
-  const raw = fs.readFileSync(csvPath, "utf8").trim();
-  if (!raw) return { before: 0, removed: 0, after: 0 };
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
-  const unique = [...new Set(lines)];
-  const removed = lines.length - unique.length;
+  const items = loadProxies(csvPath);
+  const before = items.length;
+  const seen = new Set();
+  const unique = [];
+  for (const item of items) {
+    const key = typeof item === "string" ? item : item.proxy;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(item);
+    }
+  }
+  const removed = before - unique.length;
   saveProxies(unique, csvPath);
-  return { before: lines.length, removed, after: unique.length };
+  return { before, removed, after: unique.length };
 }
 
-async function checkOnce(proxies, opts = {}) {
+async function checkOnce(items, opts = {}) {
   const { concurrency = DEFAULTS.concurrency, timeout = DEFAULTS.timeout } = opts;
   let aliveCount = 0,
     deadCount = 0;
   const timings = [];
-  console.log(`Checking ${proxies.length} proxies (concurrency: ${concurrency})...`);
+  console.log(`Checking ${items.length} proxies (concurrency: ${concurrency})...`);
   console.log(`  Targets: ${TARGETS.map((t) => t.host).join(", ")}`);
 
-  const results = await runBatch(proxies, concurrency, async (proxy, i) => {
-    const r = await testProxy(proxy, timeout);
+  const results = await runBatch(items, concurrency, async (item, i) => {
+    const proxyUrl = typeof item === "string" ? item : item.proxy;
+    const r = await testProxy(proxyUrl, timeout);
     if (r.ok) {
       aliveCount++;
-      timings.push({ proxy, ms: r.ms });
+      timings.push({ proxy: proxyUrl, country: typeof item === "object" ? item.country : "", ms: r.ms });
     } else {
       deadCount++;
     }
-    if ((i + 1) % 10 === 0 || i === proxies.length - 1) {
+    if ((i + 1) % 10 === 0 || i === items.length - 1) {
       process.stdout.write(
-        `  Checked ${i + 1}/${proxies.length} | \x1b[32mAlive: ${aliveCount}\x1b[0m | \x1b[31mDead: ${deadCount}\x1b[0m\r`,
+        `  Checked ${i + 1}/${items.length} | \x1b[32mAlive: ${aliveCount}\x1b[0m | \x1b[31mDead: ${deadCount}\x1b[0m\r`,
       );
     }
     return r.ok;
   });
 
-  const aliveProxies = proxies.filter((_, i) => results[i]);
+  const aliveItems = items.filter((_, i) => results[i]);
   console.log(`\n  Alive: \x1b[32m${aliveCount}\x1b[0m`);
   console.log(`  Dead:  \x1b[31m${deadCount}\x1b[0m`);
-  console.log(`  Total: ${proxies.length}`);
-  return { alive: aliveCount, dead: deadCount, total: proxies.length, timings, aliveProxies };
+  console.log(`  Total: ${items.length}`);
+  return { alive: aliveCount, dead: deadCount, total: items.length, timings, aliveItems };
 }
 
-async function deepClean(proxies, outputPath, opts = {}) {
+async function deepClean(items, outputPath, opts = {}) {
   const {
     deadTarget = 0,
     concurrency = DEFAULTS.concurrency,
@@ -355,7 +440,7 @@ async function deepClean(proxies, outputPath, opts = {}) {
   console.log(`\n=== DEEP CLEAN MODE (dead target: ${deadTarget}) ===`);
   const rounds = [];
   let round = 1;
-  let current = proxies;
+  let current = items;
 
   while (true) {
     console.log(`\n--- Round ${round} ---`);
@@ -373,17 +458,17 @@ async function deepClean(proxies, outputPath, opts = {}) {
         result.timings.sort((a, b) => a.ms - b.ms);
         console.log("\n  --- Alive Proxies (sorted by speed) ---");
         for (const t of result.timings) {
-          console.log(`    ${t.ms}ms  ${t.proxy}`);
+          console.log(`    ${t.ms}ms  ${t.proxy}  [${t.country || "-"}]`);
         }
       }
-      saveProxies(result.aliveProxies, outputPath);
+      saveProxies(result.aliveItems, outputPath);
       console.log(`\nUpdated: ${outputPath}`);
       break;
     }
 
-    saveProxies(result.aliveProxies, outputPath);
+    saveProxies(result.aliveItems, outputPath);
     console.log(`  ${result.dead} dead removed. ${result.alive} remaining. Waiting ${Math.round(roundDelay / 1000)}s...`);
-    current = result.aliveProxies;
+    current = result.aliveItems;
     round++;
     await new Promise((r) => setTimeout(r, roundDelay));
   }
@@ -402,16 +487,19 @@ async function deepClean(proxies, outputPath, opts = {}) {
 function fetchProxies(apiUrl = API_URL, outputPath) {
   outputPath = outputPath || path.join(PROXIES_DIR, "free.csv");
   return new Promise((resolve, reject) => {
+    const start = Date.now();
     console.log(`  Fetching proxies from API...`);
+    console.log(`  URL: ${apiUrl}`);
     https
       .get(apiUrl, (res) => {
         let data = "";
         res.on("data", (chunk) => (data += chunk));
         res.on("end", () => {
+          const elapsed = Date.now() - start;
           fs.mkdirSync(path.dirname(outputPath), { recursive: true });
           fs.writeFileSync(outputPath, data, "utf8");
           const lines = data.trim().split("\n");
-          console.log(`  Fetched ${lines.length - 1} proxies → ${outputPath}`);
+          console.log(`  Fetched ${lines.length - 1} proxies in ${elapsed}ms → ${outputPath}`);
           resolve(outputPath);
         });
       })
@@ -513,7 +601,7 @@ async function run(opts = {}) {
 
   if (mode === "normal") {
     const result = await checkOnce(proxies, { concurrency, timeout });
-    saveProxies(result.aliveProxies, outputPath);
+    saveProxies(result.aliveItems, outputPath);
     console.log(`Updated: ${outputPath}`);
   } else {
     await deepClean(proxies, outputPath, {
@@ -523,6 +611,89 @@ async function run(opts = {}) {
       roundDelay,
     });
   }
+}
+
+const BLACKLIST_PATH = path.join(PROXIES_DIR, "blacklist.csv");
+const BLACKLIST_HEADER = "proxy,timestamp,banned_until,reason";
+
+function loadBlacklist() {
+  if (!fs.existsSync(BLACKLIST_PATH)) return [];
+  const raw = fs.readFileSync(BLACKLIST_PATH, "utf8").trim();
+  if (!raw) return [];
+  const lines = raw.split("\n");
+  const entries = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line === BLACKLIST_HEADER) continue;
+    const cols = line.split(",");
+    if (cols.length >= 3) {
+      entries.push({
+        proxy: cols[0].trim(),
+        timestamp: cols[1].trim(),
+        banned_until: cols[2].trim(),
+        reason: (cols[3] || "").trim(),
+      });
+    }
+  }
+  return entries;
+}
+
+function saveBlacklist(entries) {
+  fs.mkdirSync(PROXIES_DIR, { recursive: true });
+  const lines = [BLACKLIST_HEADER];
+  for (const e of entries) {
+    lines.push(`${e.proxy},${e.timestamp},${e.banned_until},${e.reason}`);
+  }
+  fs.writeFileSync(BLACKLIST_PATH, lines.join("\n") + "\n", "utf8");
+}
+
+function isBlacklisted(proxy) {
+  const now = new Date();
+  const entries = loadBlacklist();
+  const active = [];
+  let found = false;
+  for (const e of entries) {
+    const until = new Date(e.banned_until);
+    if (until > now) {
+      active.push(e);
+      if (e.proxy === proxy) found = true;
+    }
+  }
+  if (active.length !== entries.length) saveBlacklist(active);
+  return found;
+}
+
+function addToBlacklist(proxy, reason = "automated_queries", durationMinutes = 10) {
+  const now = new Date();
+  const until = new Date(now.getTime() + durationMinutes * 60000);
+  const entries = loadBlacklist();
+  const existing = entries.findIndex((e) => e.proxy === proxy);
+  if (existing !== -1) {
+    entries[existing].timestamp = now.toISOString();
+    entries[existing].banned_until = until.toISOString();
+    entries[existing].reason = reason;
+  } else {
+    entries.push({
+      proxy,
+      timestamp: now.toISOString(),
+      banned_until: until.toISOString(),
+      reason,
+    });
+  }
+  saveBlacklist(entries);
+  console.log(`  [blacklist] Proxy blacklisted for ${durationMinutes}min: ${proxy}`);
+}
+
+function cleanExpiredBlacklist() {
+  const now = new Date();
+  const entries = loadBlacklist();
+  const before = entries.length;
+  const active = entries.filter((e) => new Date(e.banned_until) > now);
+  if (active.length !== before) {
+    saveBlacklist(active);
+    console.log(`  [blacklist] Cleaned ${before - active.length} expired entries`);
+  }
+  return before - active.length;
 }
 
 module.exports = {
@@ -542,6 +713,12 @@ module.exports = {
   fetchProxies,
   askMode,
   run,
+  loadBlacklist,
+  saveBlacklist,
+  isBlacklisted,
+  addToBlacklist,
+  cleanExpiredBlacklist,
+  BLACKLIST_PATH,
   PROXIES_DIR,
   KEYS_DIR,
   TARGETS,
