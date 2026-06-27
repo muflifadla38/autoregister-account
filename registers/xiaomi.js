@@ -649,7 +649,7 @@ async function register() {
           console.log(
             "  >>> Fix: use a residential/mobile proxy (PROXY env), or solve manually below.",
           );
-          // When running under loop-xiaomi.js with AUTO_SKIP_RATE_LIMIT, bail out
+          // When running under loop.js with AUTO_SKIP_RATE_LIMIT, bail out
           // immediately so loop can rotate to the next proxy instead of
           // hanging on manual solve for a flagged IP.
           if (process.env.AUTO_SKIP_RATE_LIMIT === "1") {

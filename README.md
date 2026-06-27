@@ -4,27 +4,24 @@ Multi-platform automated account registration bot using Playwright + temporary e
 
 ## Supported Platforms
 
-| Platform                                           | Script              | Command                    |
-| -------------------------------------------------- | ------------------- | -------------------------- |
-| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `registers/xiaomi.js`   | `npm run xiaomi`       |
-| [Alibaba Cloud](https://account.alibabacloud.com)  | `registers/alibaba.js`  | `npm run alibaba`      |
-| [Qoder](https://qoder.com) (via llm-agent-trade)   | `registers/qoder.js`    | `npm run qoder`        |
+| Platform                                           | Script                | Command                    |
+| -------------------------------------------------- | --------------------- | -------------------------- |
+| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `registers/xiaomi.js` | `npm run xiaomi`           |
+| [Alibaba Cloud](https://account.alibabacloud.com)  | `registers/alibaba.js`| `npm run alibaba`          |
+| [Qoder](https://qoder.com) (via llm-agent-trade)   | `registers/qoder.js`  | `npm run qoder`            |
 
 ## Features
 
 - **Auto register** — fill form, handle captcha, verify OTP
 - **Temp email** — generate disposable email + auto-extract OTP verification code
-- **Terms & agreements** — auto-check + confirm
-- **Cookie consent** — auto-accept on every page
-- **Human-like typing** — character-by-character with randomized delays
+- **Country-aware fingerprint** — locale, timezone, UA, viewport matched to proxy country (26 country profiles)
 - **Anti-bot detection** — stealth plugin, webdriver removal, fake browser properties, WebGL/Canvas/AudioContext fingerprint spoofing
 - **Captcha solving** — auto (reCAPTCHA audio solver + CapMonster ImageToText) with manual fallback
-- **Slider captcha** — Baxia (Alibaba) auto-slide with human-like drag pattern
-- **Multi-tab support** — dashboard stays open, OAuth in new tab per run
-- **Loop mode** — register multiple accounts in one session with proxy rotation
-- **Proxy management** — CSV-based proxy list, CONNECT + TLS verify, SOCKS4/5 support, auto-rotation
+- **Proxy management** — CSV-based proxy list, CONNECT + TLS verify, SOCKS4/5 support, auto-rotation, blacklist
 - **API key validation** — sk-* format check with auto-retry on invalid keys
 - **Auto extract keys** — keys automatically extracted to omniroute.txt after registration
+- **Loop mode** — register multiple accounts in one session with proxy rotation
+- **Proxy blacklist** — auto-blacklist proxies flagged by Google (configurable duration)
 
 ## Prerequisites
 
@@ -37,7 +34,6 @@ Multi-platform automated account registration bot using Playwright + temporary e
 **Windows:**
 ```bash
 winget install Gyan.FFmpeg
-# Or download from https://github.com/BtbN/FFmpeg-Builds/releases
 ```
 
 **macOS:**
@@ -47,8 +43,7 @@ brew install ffmpeg
 
 **Linux:**
 ```bash
-sudo apt install ffmpeg    # Debian/Ubuntu
-sudo pacman -S ffmpeg      # Arch
+sudo apt install ffmpeg
 ```
 
 Verify: `ffmpeg -version`
@@ -72,8 +67,6 @@ REFERRAL_CODE=6JWDPG
 # Browser window (optional)
 WINDOW_WIDTH=1366
 WINDOW_HEIGHT=768
-WINDOW_X=
-WINDOW_Y=
 
 # Other platforms (optional)
 QODER_URL=https://your-platform-url.com/dashboard/providers/qoder
@@ -84,9 +77,9 @@ ALIBABA_PASSWORD=your_alibaba_password
 CAPMONSTER_API_KEY=your_capmonster_key
 
 # Proxy
-PROXY=http://user:pass@ip:port
-PROXIES=http://ip1:port1,http://ip2:port2
-USE_PROXY_CSV=true
+PROXY=http://user:pass@ip:port          # Single proxy
+PROXIES=http://ip1:port1,http://ip2:port2  # Comma-separated
+USE_PROXY_CSV=true                       # Use proxies/rechecked.csv
 ```
 
 ## Usage
@@ -94,9 +87,9 @@ USE_PROXY_CSV=true
 ### Register
 
 ```bash
-npm run xiaomi          # Xiaomi MiMo
-npm run alibaba         # Alibaba Cloud
-npm run qoder           # Qoder
+npm run xiaomi              # Xiaomi MiMo
+npm run alibaba             # Alibaba Cloud
+npm run qoder               # Qoder
 
 # Or use dispatcher directly
 node register.js xiaomi
@@ -104,10 +97,14 @@ node register.js alibaba
 node register.js qoder
 ```
 
-### Loop Mode (Xiaomi)
+### Loop Mode
 
 ```bash
-npm run loop-xiaomi
+npm run loop                # Default: xiaomi
+npm run loop-xiaomi         # Explicit xiaomi
+node loop.js xiaomi         # Same
+
+# Add new modes by creating loops/newmode.js + adding to loop.js
 ```
 
 Keypress controls: `s`/`n` skip · `q` quit
@@ -117,11 +114,12 @@ Keypress controls: `s`/`n` skip · `q` quit
 ```bash
 npm run check-proxies       # Fetch from API + deep check → proxies/checked.csv
 npm run recheck-proxies     # Re-validate → proxies/rechecked.csv
+npm run proxies             # Both: check + recheck
 ```
 
-Advanced usage:
+Advanced:
 ```bash
-node utils/proxy.js --mode deep --dead-target 0 --fetch --output proxies/checked.csv
+node utils/proxy.js --mode deep --dead-target 0 --fetch
 node utils/proxy.js --mode normal --input proxies/rechecked.csv
 node utils/proxy.js --mode dedup --input proxies/rechecked.csv
 ```
@@ -137,8 +135,8 @@ Auto-extracts after each registration. Manual run for re-extraction.
 ## Project Structure
 
 ```
-├── register.js              # Dispatcher (node register.js <mode>)
-├── loop-xiaomi.js           # Xiaomi loop runner with proxy rotation
+├── register.js              # Register dispatcher (node register.js <mode>)
+├── loop.js                  # Loop dispatcher (node loop.js [mode])
 ├── check-proxies.js         # Fetch + deep check proxies
 ├── recheck-proxies.js       # Re-validate existing proxies
 ├── extract-keys.js          # Extract API keys to omniroute.txt
@@ -148,8 +146,11 @@ Auto-extracts after each registration. Manual run for re-extraction.
 │   ├── alibaba.js           # Alibaba Cloud registration bot
 │   └── qoder.js             # Qoder registration bot
 │
+├── loops/
+│   └── xiaomi.js            # Xiaomi loop runner with proxy rotation
+│
 ├── utils/
-│   ├── proxy.js             # Reusable proxy module (fetch, clean, check, recheck, dedup)
+│   ├── proxy.js             # Reusable proxy module (fetch, clean, check, recheck, dedup, blacklist)
 │   ├── extract-keys.js      # Reusable extract keys module
 │   ├── capmonster.js        # CapMonster solver (Aliyun + ImageToText)
 │   ├── captcha.js           # 2captcha + manual captcha helpers
@@ -165,11 +166,12 @@ Auto-extracts after each registration. Manual run for re-extraction.
 │   ├── captcha.js
 │   └── otp.js
 │
-├── proxies/                 # Proxy CSV files (gitignored)
+├── proxies/                 # Proxy files (gitignored)
 │   ├── free.csv             # Raw from API (hproxy.com)
-│   ├── checked.csv          # Output of check-proxies
-│   ├── rechecked.csv        # Output of recheck-proxies
-│   └── worked.csv           # Proxies that successfully registered
+│   ├── checked.csv          # Output of check-proxies (proxy,country)
+│   ├── rechecked.csv        # Output of recheck-proxies (proxy,country)
+│   ├── worked.csv           # Proxies that registered successfully (proxy,country,timestamp)
+│   └── blacklist.csv        # Blacklisted proxies (proxy,timestamp,banned_until,reason)
 │
 ├── keys/                    # Output files (gitignored)
 │   ├── keys.csv             # Xiaomi + Qoder API keys
@@ -181,35 +183,77 @@ Auto-extracts after each registration. Manual run for re-extraction.
 └── .env.example             # Environment variable template
 ```
 
+## Proxy CSV Format
+
+All proxy CSV files use `proxy,country` format with header:
+
+```csv
+proxy,country
+http://1.2.3.4:80,US
+socks5://5.6.7.8:1080,DE
+```
+
+## Country-Aware Fingerprinting
+
+When a proxy has country data, the browser fingerprint automatically adapts:
+
+| Country | Locale  | Timezone           | Platform |
+| ------- | ------- | ------------------ | -------- |
+| US      | en-US   | America/New_York   | Windows  |
+| GB      | en-GB   | Europe/London      | Windows  |
+| DE      | de-DE   | Europe/Berlin      | Windows  |
+| JP      | ja-JP   | Asia/Tokyo         | macOS    |
+| KR      | ko-KR   | Asia/Seoul         | Windows  |
+| SG      | en-SG   | Asia/Singapore     | Windows  |
+| ID      | id-ID   | Asia/Jakarta       | Windows  |
+| BR      | pt-BR   | America/Sao_Paulo  | Windows  |
+| AU      | en-AU   | Australia/Sydney   | macOS    |
+| ...     | ...     | ...                | ...      |
+
+26 country profiles defined in `registers/xiaomi.js`. Unmapped countries fall back to US profile.
+
+## Proxy Blacklist
+
+When Google flags a proxy with "automated queries", it's automatically blacklisted in `proxies/blacklist.csv`:
+
+```csv
+proxy,timestamp,banned_until,reason
+http://1.2.3.4:80,2026-06-27T20:00:00.000Z,2026-06-27T20:10:00.000Z,automated_queries
+```
+
+- Default duration: 10 minutes (configurable via `CONFIG.blacklistDuration`)
+- Expired entries auto-cleaned on startup
+- Blacklisted proxies skipped in both register and loop scripts
+
 ## Proxy Flow
 
 1. **Fetch** — `check-proxies.js` downloads from hproxy.com API → `proxies/free.csv`
-2. **Clean** — parses protocols (http/https/socks4/socks5), defaults to http
+2. **Clean** — parses protocols (http/https/socks4/socks5) + country from API data
 3. **Check** — CONNECT + TLS verify to 3 targets (platform.xiaomimimo.com, account.xiaomi.com, global.account.xiaomi.com)
-4. **Deep clean** — loops until dead=0, shows alive proxies sorted by speed
-5. **Output** — `proxies/checked.csv` (one proxy URL per line, no header)
+4. **Deep clean** — loops until dead=0, shows alive proxies sorted by speed with country
+5. **Output** — `proxies/checked.csv` (`proxy,country` format)
 6. **Recheck** — `recheck-proxies.js` re-validates → `proxies/rechecked.csv`
 7. **Use** — register scripts read from `proxies/rechecked.csv` when `USE_PROXY_CSV=true`
-8. **Save** — working proxies auto-saved to `proxies/worked.csv`
+8. **Save** — working proxies auto-saved to `proxies/worked.csv` with timestamp
 
-## Flow
+## Registration Flow
 
 ### Xiaomi MiMo (12 steps)
 
-| Step | Description                                            |
-| ---- | ------------------------------------------------------ |
-| 1    | Launch Chromium browser                                |
-| 2    | Generate temporary email                               |
-| 3    | Open landing page + accept cookies + click Sign Up     |
-| 4    | Region auto-detected                                   |
-| 5    | Fill email, password, confirm password, agree checkbox |
-| 6    | Submit form + captcha (manual/audio/2captcha)          |
-| 7    | Wait for OTP email → auto-extract → auto-fill          |
-| 8    | Wait for OAuth redirect to console                     |
-| 9    | Terms & agreements (checklist + confirm)               |
-| 10   | Navigate to API Keys → Create API Key                  |
-| 11   | Extract API key → validate sk-* → save to keys.csv     |
-| 12   | Redeem invite code + auto extract to omniroute.txt     |
+| Step | Description                                                   |
+| ---- | ------------------------------------------------------------- |
+| 1    | Launch Chromium with country-aware fingerprint                |
+| 2    | Generate temporary email                                      |
+| 3    | Open landing page + accept cookies + click Sign Up            |
+| 4    | Region auto-detected                                          |
+| 5    | Fill email, password, confirm password, agree checkbox        |
+| 6    | Submit form + captcha (manual/audio/2captcha)                 |
+| 7    | Wait for OTP email → auto-extract → auto-fill                 |
+| 8    | Wait for OAuth redirect to console                            |
+| 9    | Terms & agreements (checklist + confirm)                      |
+| 10   | Navigate to API Keys → Create API Key                         |
+| 11   | Extract API key → validate sk-* → save to keys.csv            |
+| 12   | Redeem invite code + auto extract to omniroute.txt            |
 
 ### Alibaba Cloud (9 steps)
 
@@ -261,6 +305,7 @@ akun-2|sk-yyyyyyyyyyyyyyyyy
 - Alibaba: use residential proxy — datacenter IPs are flagged.
 - Qoder: captcha auto-solved via CapMonster (Aliyun slider), falls back to manual.
 - Proxy CONNECT test verifies TLS handshake through tunnel (same as Playwright behavior).
-- Working proxies are auto-saved to `proxies/worked.csv` after successful registration.
-- API keys are validated for `sk-*` format before saving to prevent clipboard paste bugs.
-- Keys are auto-extracted to `keys/omniroute.txt` after each registration.
+- Working proxies auto-saved to `proxies/worked.csv` after successful registration.
+- API keys validated for `sk-*` format before saving to prevent clipboard paste bugs.
+- Keys auto-extracted to `keys/omniroute.txt` after each registration.
+- Add new loop modes by creating `loops/newmode.js` and adding to `loop.js`.

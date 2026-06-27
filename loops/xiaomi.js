@@ -1,17 +1,18 @@
-// loop-xiaomi.js — Keeps re-running register.js xiaomi with proxy rotation & delays
+// loops/xiaomi.js — Keeps re-running register.js xiaomi with proxy rotation & delays
 // Keypress while a run is in progress:
 //   s / n  → skip current run (kill child, rotate proxy)
 //   q      → stop loop cleanly (print report and exit)
 // Ctrl+C also stops cleanly.
 const { spawn } = require("child_process");
-const fs = require("fs");
 const path = require("path");
-const { isBlacklisted, cleanExpiredBlacklist, loadProxies } = require("./utils/proxy.js");
+const { isBlacklisted, cleanExpiredBlacklist, loadProxies } = require("../utils/proxy.js");
+
+const ROOT = path.join(__dirname, "..");
 
 cleanExpiredBlacklist();
 const PROXIES =
   process.env.USE_PROXY_CSV === "true"
-    ? loadProxies(path.join(__dirname, "proxies", "rechecked.csv"))
+    ? loadProxies(path.join(ROOT, "proxies", "rechecked.csv"))
     : process.env.PROXIES
       ? process.env.PROXIES.split(",").map((p) => ({ proxy: p.trim(), country: "" }))
       : [];
@@ -85,7 +86,6 @@ function onKey(chunk) {
   if (s === "s" || s === "S" || s === "n" || s === "N") {
     if (running && currentChild) {
       console.log("\n[loop] Skip requested — killing current run.");
-      // Mark as a manual skip; child exit will count as failed and rotate.
       currentChild.kill("SIGINT");
     }
     return;
@@ -108,7 +108,7 @@ function run() {
   enableKeypress();
   currentChild = spawn("node", ["register.js", "xiaomi"], {
     stdio: "inherit",
-    cwd: __dirname,
+    cwd: ROOT,
     env,
   });
 
