@@ -12,6 +12,7 @@
     "tempmail": "node tempmail.js",
     "check-proxies": "node check-proxies.js",
     "recheck-proxies": "node recheck-proxies.js",
+    "proxies": "node check-proxies.js && node recheck-proxies.js",
     "extract-keys": "node extract-keys.js",
     "playwright:install": "npx playwright install chromium"
   },
