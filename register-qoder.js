@@ -30,7 +30,7 @@ const CONFIG = {
   // Qoder provider page
   qoderUrl: process.env.QODER_URL,
   // Output file
-  outputFile: path.join(__dirname, 'keys.csv'),
+  outputFile: path.join(__dirname, 'keys', 'keys.csv'),
   // Platform password (for first-time access)
   platformPassword: process.env.PLATFORM_PASSWORD,
   // Password for Qoder accounts

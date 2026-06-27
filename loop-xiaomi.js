@@ -1,4 +1,4 @@
-// loop_xiaomi.js — Keeps re-running register_xiaomi.js with proxy rotation & delays
+// loop-xiaomi.js — Keeps re-running register-xiaomi.js with proxy rotation & delays
 // Keypress while a run is in progress:
 //   s / n  → skip current run (kill child, rotate proxy)
 //   q      → stop loop cleanly (print report and exit)
@@ -58,12 +58,12 @@ function loadProxiesFromCsv(csvPath) {
 
 const PROXIES =
   process.env.USE_PROXY_CSV === "true"
-    ? loadProxiesFromCsv(path.join(__dirname, "proxies_clean.csv"))
+    ? loadProxiesFromCsv(path.join(__dirname, "proxies", "rechecked.csv"))
     : process.env.PROXIES
       ? process.env.PROXIES.split(",").map((p) => p.trim())
       : [];
 console.log(
-  `Loaded ${PROXIES.length} proxies from ${process.env.USE_PROXY_CSV === "true" ? "proxies_clean.csv" : "environment variable"}.`,
+  `Loaded ${PROXIES.length} proxies from ${process.env.USE_PROXY_CSV === "true" ? "proxies/rechecked.csv" : "environment variable"}.`,
 );
 
 let count = 0;
@@ -149,7 +149,7 @@ function run() {
 
   running = true;
   enableKeypress();
-  currentChild = spawn("node", ["register_xiaomi.js"], {
+  currentChild = spawn("node", ["register-xiaomi.js"], {
     stdio: "inherit",
     cwd: __dirname,
     env,

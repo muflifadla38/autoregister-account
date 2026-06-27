@@ -15,7 +15,7 @@ const CONFIG = {
   registerUrl: 'https://account.alibabacloud.com/register/intl_register.htm',
   consoleUrl: 'https://modelstudio.console.alibabacloud.com',
   password: process.env.ALIBABA_PASSWORD || 'AlibabaAuto2025!',
-  outputFile: path.join(__dirname, 'alibaba.csv'),
+  outputFile: path.join(__dirname, 'keys', 'alibaba.csv'),
   emailTimeout: 120000,
   otpTimeout: 180000,
   navigateTimeout: 30000,

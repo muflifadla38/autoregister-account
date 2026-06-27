@@ -109,7 +109,7 @@ async function extractCaptchaConfig(page) {
     }
 
     // Strategy 5: values captured by the network route intercept and injected
-    // into window.__aliyunCaptchaNetworkConfig (see register_qoder.js context.route)
+    // into window.__aliyunCaptchaNetworkConfig (see register-qoder.js context.route)
     const netCfg = window.__aliyunCaptchaNetworkConfig;
     if (netCfg) {
       if (!out.sceneId && netCfg.sceneId) out.sceneId = netCfg.sceneId;

@@ -17,6 +17,8 @@ const {
   waitForCaptchaSolved,
 } = require("./utils/captcha.js");
 const { solveImageCaptcha } = require("./utils/capmonster.js");
+const { loadProxies } = require("./utils/proxy.js");
+const { extractKeys } = require("./utils/extract-keys.js");
 
 const ffmpegPath = findFfmpeg();
 console.log(`  ffmpeg: ${ffmpegPath}`);
@@ -32,7 +34,7 @@ const CONFIG = {
   // API key name
   apiKeyName: "auto-" + Date.now().toString(36),
   // Output file for API key
-  outputFile: path.join(__dirname, "keys.csv"),
+  outputFile: path.join(__dirname, "keys", "keys.csv"),
   // User config
   password: process.env.PLATFORM_PASSWORD || "NutrisariJeruk2026!",
   region: "Indonesia",
@@ -53,58 +55,9 @@ const CONFIG = {
 
 // sleep, rand, and typeHuman functions are now imported from ./utils/helpers.js
 
-function parseCsvLine(line) {
-  const cols = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === "," && !inQuotes) {
-      cols.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  cols.push(current);
-  return cols;
-}
-
-function loadProxiesFromCsv(csvPath) {
-  if (!fs.existsSync(csvPath)) {
-    console.log(`  [proxy] CSV not found: ${csvPath}`);
-    return [];
-  }
-  const content = fs.readFileSync(csvPath, "utf8").trim();
-  const lines = content.split("\n");
-  if (lines.length < 2) return [];
-  const header = parseCsvLine(lines[0]);
-  const proxyIdx = header.indexOf("proxy");
-  if (proxyIdx === -1) {
-    console.log("  [proxy] 'proxy' column not found in CSV header");
-    return [];
-  }
-  const proxies = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = parseCsvLine(lines[i]);
-    const p = (cols[proxyIdx] || "").trim();
-    if (p && (p.startsWith("http") || p.startsWith("socks"))) {
-      proxies.push(p);
-    }
-  }
-  return proxies;
-}
-
 function saveWorkingProxy(proxy) {
   if (!proxy) return;
-  const file = path.join(__dirname, "proxies_worked.csv");
+  const file = path.join(__dirname, "proxies", "worked.csv");
   const existing = new Set();
   if (fs.existsSync(file)) {
     const lines = fs.readFileSync(file, "utf8").trim().split("\n");
@@ -123,7 +76,7 @@ function saveWorkingProxy(proxy) {
 
 const FREE_PROXIES =
   process.env.USE_PROXY_CSV === "true"
-    ? loadProxiesFromCsv(path.join(__dirname, "proxies_clean.csv"))
+    ? loadProxies(path.join(__dirname, "proxies", "rechecked.csv"))
     : process.env.PROXIES
       ? process.env.PROXIES.split(",").map((p) => p.trim())
       : [];
@@ -632,7 +585,7 @@ async function register() {
           console.log(
             "  >>> Fix: use a residential/mobile proxy (PROXY env), or solve manually below.",
           );
-          // When running under loop_xiaomi.js with AUTO_SKIP_RATE_LIMIT, bail out
+          // When running under loop-xiaomi.js with AUTO_SKIP_RATE_LIMIT, bail out
           // immediately so loop can rotate to the next proxy instead of
           // hanging on manual solve for a flagged IP.
           if (process.env.AUTO_SKIP_RATE_LIMIT === "1") {
@@ -925,6 +878,58 @@ async function register() {
       } catch (_) {}
     }
 
+    // Validate API key format (sk-*) to prevent clipboard paste bugs
+    if (apiKey && !apiKey.startsWith("sk-")) {
+      console.log(`  [WARN] Key format invalid (not sk-*): "${apiKey.substring(0, 20)}..."`);
+      console.log("  [WARN] Creating new API key to replace invalid one...");
+      apiKey = "";
+    }
+
+    // If key is missing or invalid, retry extraction
+    if (!apiKey || apiKey === "NOT_FOUND") {
+      console.log("  [WARN] Valid API key not found, attempting to create new one...");
+      // Re-navigate to API key page and create
+      for (const p of ["/apikey", "/developer/apikey", "/developer"]) {
+        try {
+          await page.goto(CONFIG.consoleUrl + p, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await sleep(2000);
+          break;
+        } catch (_) {}
+      }
+      // Try create button
+      const retryCreateBtn = page.locator('button:has-text("Create API Key"), button:has-text("Create")').first();
+      if (await retryCreateBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await retryCreateBtn.click();
+        await sleep(1500);
+        const retryNameInput = page.locator('input[placeholder*="name" i], input[placeholder*="Name" i], input[type="text"]').first();
+        if (await retryNameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await retryNameInput.fill("");
+          await retryNameInput.fill(CONFIG.apiKeyName);
+          await sleep(500);
+        }
+        const retryConfirm = page.locator('button:has-text("Confirm"), button:has-text("OK"), button:has-text("Create")').first();
+        if (await retryConfirm.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await retryConfirm.click();
+          await sleep(3000);
+        }
+      }
+      // Re-extract key
+      for (const selector of keySelectors) {
+        const el = page.locator(selector).first();
+        if (await el.isVisible({ timeout: 5000 }).catch(() => false)) {
+          const text = await el.textContent().catch(() => "");
+          if (text && text.trim().length > 10 && text.trim().startsWith("sk-")) {
+            apiKey = text.trim();
+            break;
+          }
+        }
+      }
+      if (!apiKey || !apiKey.startsWith("sk-")) {
+        console.log("  [WARN] Could not get valid sk-* key after retry.");
+        apiKey = apiKey || "NOT_FOUND";
+      }
+    }
+
     // Save to CSV
     const csvHeaders = "timestamp,email,password,api_key_name,api_key";
     const csvRow = [
@@ -1083,6 +1088,19 @@ async function register() {
 
     console.log("  >>> Playing success sound alert");
     await playSound(SOUNDS.success);
+
+    // Auto extract keys to omniroute.txt
+    try {
+      const extractResult = extractKeys(
+        path.join(__dirname, "keys", "keys.csv"),
+        path.join(__dirname, "keys", "omniroute.txt"),
+      );
+      if (extractResult.added > 0) {
+        console.log(`  [extract] ${extractResult.added} new key(s) added to omniroute.txt`);
+      }
+    } catch (e) {
+      console.log(`  [extract] Failed: ${e.message}`);
+    }
 
     console.log("\n========================================");
     console.log("  REGISTRATION SUMMARY");
