@@ -33,7 +33,6 @@ const {
 const { extractKeys } = require("../utils/extract-keys.js");
 
 const ffmpegPath = findFfmpeg();
-console.log(`  ffmpeg: ${ffmpegPath}`);
 
 let skipStep = false;
 let keypressEnabled = false;
@@ -89,11 +88,11 @@ const CONFIG = {
   password: process.env.PLATFORM_PASSWORD || "NutrisariJeruk2026!",
   region: "Indonesia",
   // Timeouts (ms)
-  emailTimeout: 6000000,
-  otpTimeout: 6000000,
-  navigateTimeout: 6000000,
+  emailTimeout: 600000,
+  otpTimeout: 600000,
+  navigateTimeout: 600000,
   // Reusable timeout for manual captcha solving (waitForCaptchaSolved)
-  captchaSolveTimeout: 6000000, // 10 min
+  captchaSolveTimeout: 600000, // 10 min
   // Captcha mode: 'manual' | 'audio' | '2captcha'
   captchaMode: "audio",
   captchaApiKey: "",
@@ -354,7 +353,7 @@ async function getRandomProxy() {
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
 
 async function handleTermsAgreement(page) {
-  // Poll for terms page to fully load (max 15s)
+  // Poll for terms page to fully load (max 60s)
   const deadline = Date.now() + 15000;
   let hasTerms = false;
 
@@ -376,8 +375,8 @@ async function handleTermsAgreement(page) {
   }
 
   if (!hasTerms) {
-    console.log("  No terms agreement detected, skipping...");
-    return;
+    console.log("  No terms agreement detected, looping...");
+    handleTermsAgreement();
   }
 
   console.log("  Terms agreement detected!");
@@ -519,7 +518,7 @@ function playSound(filePath) {
 async function gotoTolerant(page, url, opts = {}) {
   const {
     waitUntil = "domcontentloaded",
-    timeout = 6000000,
+    timeout = 600000,
     settleAfter = 1500,
   } = opts;
   try {
@@ -536,6 +535,7 @@ async function gotoTolerant(page, url, opts = {}) {
 }
 
 async function register() {
+  const startTime = Date.now();
   enableStepKeypress();
   if (process.env.USE_PROXY === "true") {
     CONFIG.proxy = await getRandomProxy();
@@ -610,13 +610,12 @@ async function register() {
     console.log("  Waiting for cookie...");
     await handleCookies(page);
     await sleep(rand(2000, 3000));
-    console.log(`  Proxy: ${CONFIG.proxy}`);
     console.log(`  Register URL: ${CONFIG.registerUrl}`);
     await gotoTolerant(page, CONFIG.registerUrl);
 
     // Wait for Xiaomi registration page to load
     await page
-      .waitForURL(/account\.xiaomi\.com/, { timeout: 6000000 })
+      .waitForURL(/account\.xiaomi\.com/, { timeout: 600000 })
       .catch(() => {});
     await sleep(rand(2000, 3000));
     await handleCookies(page);
@@ -684,28 +683,6 @@ async function register() {
 
     // Handle captcha
     if (CONFIG.captchaMode === "audio") {
-      // Pre-check: detect if Google already flagged this network/IP
-      try {
-        await page
-          .waitForLoadState("domcontentloaded", { timeout: 6000000 })
-          .catch(() => {});
-        const blocked = await page
-          .locator(
-            "text=/Your computer or network may be sending automated queries|automated queries|unusual traffic from your computer|automated requests/i",
-          )
-          .first();
-        if (await blocked.isVisible({ timeout: 6000000 }).catch(() => false)) {
-          if (CONFIG.proxy) {
-            addToBlacklist(
-              CONFIG.proxy,
-              "automated_queries",
-              CONFIG.blacklistDuration,
-            );
-          }
-          throw new Error("GOOGLE_RATE_LIMITED");
-        }
-      } catch (_) {}
-
       console.log("  Auto-solving captcha with audio (offline, free)...");
 
       // Wait for reCAPTCHA checkbox to load (with retry)
@@ -761,7 +738,7 @@ async function register() {
       } else if (!checkboxClicked) {
         console.log("  [WARN] Could not click reCAPTCHA checkbox.");
         console.log("  >>> Please solve the captcha manually in the browser.");
-        console.log("  >>> Playing manual-captcha sound alert");
+        console.log("  >>> Playing manual-captcha sound alert.");
         await playSound(SOUNDS.manualCaptcha);
         const captchaSolved = await waitForCaptchaSolved(
           page,
@@ -779,7 +756,7 @@ async function register() {
           process.env.VERBOSE = "1";
           console.log("  Solving reCAPTCHA via audio...");
           await solveRecaptchaAudio(page, {
-            wait: 15000,
+            wait: 5000,
             retry: 5,
             ffmpeg: ffmpegPath,
           });
@@ -836,7 +813,7 @@ async function register() {
               console.log("  Custom captcha solved!");
             } else {
               console.log("  >>> CapMonster failed — please solve manually.");
-              console.log("  >>> Playing manual-captcha sound alert");
+              console.log("  >>> Playing manual-captcha sound alert!");
               await playSound(SOUNDS.manualCaptcha);
               const manualSolved = await waitForCaptchaSolved(
                 page,
@@ -860,35 +837,47 @@ async function register() {
             );
           }
         } catch (e) {
-          if (e.message === "GOOGLE_RATE_LIMITED") {
-            console.log(
-              "  >>> Google blocked this IP/network ('automated queries').",
-            );
-            if (CONFIG.proxy) {
-              addToBlacklist(
-                CONFIG.proxy,
-                "automated_queries",
-                CONFIG.blacklistDuration,
-              );
+          // detect if Google already flagged this network/IP
+          try {
+            let isBlocked = false;
+            for (const frame of page.frames()) {
+              const count = await frame
+                .locator(".rc-doscaptcha-body-text, .rc-doscaptcha-header-text")
+                .count();
+
+              if (count > 0) {
+                isBlocked = true;
+                break;
+              }
             }
-            console.log(
-              "  >>> Auto audio solve will NOT work — IP is rate-limited.",
-            );
-            console.log(
-              "  >>> Fix: use a residential/mobile proxy (PROXY env), or solve manually below.",
-            );
-            if (process.env.AUTO_SKIP_RATE_LIMIT === "1") {
+            if (isBlocked) {
               console.log(
-                "  >>> AUTO_SKIP_RATE_LIMIT=1 — aborting run, loop will skip.",
+                "  >>> Google blocked this IP/network ('automated queries').",
               );
-              process.exitCode = 1;
-              return;
+              if (CONFIG.proxy) {
+                addToBlacklist(
+                  CONFIG.proxy,
+                  "automated_queries",
+                  CONFIG.blacklistDuration,
+                );
+              }
+              console.log(
+                "  >>> Auto audio solve will NOT work — IP is rate-limited.",
+              );
+              if (process.env.AUTO_SKIP_RATE_LIMIT === "1") {
+                console.log(
+                  "  >>> AUTO_SKIP_RATE_LIMIT=1 — aborting run, loop will skip.",
+                );
+                process.exitCode = 1;
+                return;
+              }
             }
-          } else {
-            console.log(`  Audio solver failed: ${e.message}`);
-            console.log("  Falling back to manual solve...");
-          }
-          console.log("  >>> Playing manual-captcha sound alert");
+          } catch (_) {}
+
+          console.log(
+            `  Audio solver failed: ${e.message}. Falling back to manual solve...`,
+          );
+          console.log("  >>>Playing manual-captcha sound alert");
           await playSound(SOUNDS.manualCaptcha);
           await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
         }
@@ -900,7 +889,7 @@ async function register() {
       console.log(
         "  >>> CAPTCHA: Please solve the captcha manually in the browser.",
       );
-      console.log("  >>> Playing manual-captcha sound alert");
+      console.log("  >>>Playing manual-captcha sound alert.");
       await playSound(SOUNDS.manualCaptcha);
       console.log("  >>> Auto-detecting when solved...");
       const captchaSolved = await waitForCaptchaSolved(
@@ -961,7 +950,7 @@ async function register() {
     // Step 8: Wait for OAuth redirect chain to platform console
     console.log("[8/12] Waiting for OAuth redirect to platform console...");
     await page
-      .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 })
+      .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 15000 })
       .catch(async () => {
         console.log("  Redirect not detected, navigating manually...");
         await page.goto(CONFIG.consoleUrl, {
@@ -1024,7 +1013,7 @@ async function register() {
         try {
           await page.goto(url, {
             waitUntil: "domcontentloaded",
-            timeout: 6000000,
+            timeout: 600000,
           });
           await handleCookies(page);
           await sleep(1500);
@@ -1385,6 +1374,10 @@ async function register() {
     console.log(`  Password:   ${CONFIG.password}`);
     console.log(`  API Key:    ${apiKey || "check api_key_created.png"}`);
     console.log(`  Saved to:   ${CONFIG.outputFile}`);
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    console.log(`  Runtime:    ${mins}m ${secs}s`);
     console.log("========================================\n");
     console.log("Browser will close in 30 seconds...");
     await sleep(5000);

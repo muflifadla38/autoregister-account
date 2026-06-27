@@ -33,6 +33,7 @@ let currentChild = null;
 let running = false;
 let stopping = false;
 let keypressEnabled = false;
+let loopStartTime = Date.now();
 
 function getProxyInfo(env) {
   if (env.USE_PROXY) {
@@ -45,11 +46,28 @@ function getProxyInfo(env) {
   return { proxy: null, country: null };
 }
 
+function formatDuration(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  if (h > 0) return `${h}h ${min}m ${sec}s`;
+  return `${min}m ${sec}s`;
+}
+
+function printStatusBar() {
+  const elapsed = formatDuration(Date.now() - loopStartTime);
+  console.log(`\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m`);
+}
+
 function printReport() {
+  const elapsed = formatDuration(Date.now() - loopStartTime);
   console.log("\n=========== FINAL REPORT ===========");
   console.log(`  Successful : ${success}`);
   console.log(`  Failed     : ${failed}`);
   console.log(`  Total runs : ${count}`);
+  console.log(`  Runtime    : ${elapsed}`);
   console.log("====================================\n");
 }
 
@@ -140,6 +158,7 @@ function run() {
         `\nRun #${count} stopped (code ${code}${signal ? `, signal ${signal}` : ""}).`,
       );
     }
+    printStatusBar();
     if (stopping) {
       disableKeypress();
       printReport();
