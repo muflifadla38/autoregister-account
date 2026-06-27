@@ -4,11 +4,11 @@ Multi-platform automated account registration bot using Playwright + temporary e
 
 ## Supported Platforms
 
-| Platform                                           | Script                | Command                    |
-| -------------------------------------------------- | --------------------- | -------------------------- |
-| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `registers/xiaomi.js` | `npm run xiaomi`           |
-| [Alibaba Cloud](https://account.alibabacloud.com)  | `registers/alibaba.js`| `npm run alibaba`          |
-| [Qoder](https://qoder.com) (via llm-agent-trade)   | `registers/qoder.js`  | `npm run qoder`            |
+| Platform                                           | Script                 | Command           |
+| -------------------------------------------------- | ---------------------- | ----------------- |
+| [Xiaomi MiMo API](https://platform.xiaomimimo.com) | `registers/xiaomi.js`  | `npm run xiaomi`  |
+| [Alibaba Cloud](https://account.alibabacloud.com)  | `registers/alibaba.js` | `npm run alibaba` |
+| [Qoder](https://qoder.com) (via llm-agent-trade)   | `registers/qoder.js`   | `npm run qoder`   |
 
 ## Features
 
@@ -18,7 +18,7 @@ Multi-platform automated account registration bot using Playwright + temporary e
 - **Anti-bot detection** — stealth plugin, webdriver removal, fake browser properties, WebGL/Canvas/AudioContext fingerprint spoofing
 - **Captcha solving** — auto (reCAPTCHA audio solver + CapMonster ImageToText) with manual fallback
 - **Proxy management** — CSV-based proxy list, CONNECT + TLS verify, SOCKS4/5 support, auto-rotation, blacklist
-- **API key validation** — sk-* format check with auto-retry on invalid keys
+- **API key validation** — sk-\* format check with auto-retry on invalid keys
 - **Auto extract keys** — keys automatically extracted to omniroute.txt after registration
 - **Loop mode** — register multiple accounts in one session with proxy rotation
 - **Proxy blacklist** — auto-blacklist proxies flagged by Google (configurable duration)
@@ -32,16 +32,19 @@ Multi-platform automated account registration bot using Playwright + temporary e
 ### Installing FFmpeg
 
 **Windows:**
+
 ```bash
 winget install Gyan.FFmpeg
 ```
 
 **macOS:**
+
 ```bash
 brew install ffmpeg
 ```
 
 **Linux:**
+
 ```bash
 sudo apt install ffmpeg
 ```
@@ -109,6 +112,14 @@ node loop.js xiaomi         # Same
 
 Keypress controls: `s`/`n` skip · `q` quit
 
+### Full Automation
+
+```bash
+npm run auto-xiaomi                # Fetch proxies + check + recheck + loop xiaomi
+```
+
+One command to do everything: fetch fresh proxies from API, deep check → checked.csv, recheck → rechecked.csv, then start loop registration.
+
 ### Proxy Management
 
 ```bash
@@ -118,6 +129,7 @@ npm run proxies             # Both: check + recheck
 ```
 
 Advanced:
+
 ```bash
 node utils/proxy.js --mode deep --dead-target 0 --fetch
 node utils/proxy.js --mode normal --input proxies/rechecked.csv
@@ -197,18 +209,18 @@ socks5://5.6.7.8:1080,DE
 
 When a proxy has country data, the browser fingerprint automatically adapts:
 
-| Country | Locale  | Timezone           | Platform |
-| ------- | ------- | ------------------ | -------- |
-| US      | en-US   | America/New_York   | Windows  |
-| GB      | en-GB   | Europe/London      | Windows  |
-| DE      | de-DE   | Europe/Berlin      | Windows  |
-| JP      | ja-JP   | Asia/Tokyo         | macOS    |
-| KR      | ko-KR   | Asia/Seoul         | Windows  |
-| SG      | en-SG   | Asia/Singapore     | Windows  |
-| ID      | id-ID   | Asia/Jakarta       | Windows  |
-| BR      | pt-BR   | America/Sao_Paulo  | Windows  |
-| AU      | en-AU   | Australia/Sydney   | macOS    |
-| ...     | ...     | ...                | ...      |
+| Country | Locale | Timezone          | Platform |
+| ------- | ------ | ----------------- | -------- |
+| US      | en-US  | America/New_York  | Windows  |
+| GB      | en-GB  | Europe/London     | Windows  |
+| DE      | de-DE  | Europe/Berlin     | Windows  |
+| JP      | ja-JP  | Asia/Tokyo        | macOS    |
+| KR      | ko-KR  | Asia/Seoul        | Windows  |
+| SG      | en-SG  | Asia/Singapore    | Windows  |
+| ID      | id-ID  | Asia/Jakarta      | Windows  |
+| BR      | pt-BR  | America/Sao_Paulo | Windows  |
+| AU      | en-AU  | Australia/Sydney  | macOS    |
+| ...     | ...    | ...               | ...      |
 
 26 country profiles defined in `registers/xiaomi.js`. Unmapped countries fall back to US profile.
 
@@ -240,34 +252,34 @@ http://1.2.3.4:80,2026-06-27T20:00:00.000Z,2026-06-27T20:10:00.000Z,automated_qu
 
 ### Xiaomi MiMo (12 steps)
 
-| Step | Description                                                   |
-| ---- | ------------------------------------------------------------- |
-| 1    | Launch Chromium with country-aware fingerprint                |
-| 2    | Generate temporary email                                      |
-| 3    | Open landing page + accept cookies + click Sign Up            |
-| 4    | Region auto-detected                                          |
-| 5    | Fill email, password, confirm password, agree checkbox        |
-| 6    | Submit form + captcha (manual/audio/2captcha)                 |
-| 7    | Wait for OTP email → auto-extract → auto-fill                 |
-| 8    | Wait for OAuth redirect to console                            |
-| 9    | Terms & agreements (checklist + confirm)                      |
-| 10   | Navigate to API Keys → Create API Key                         |
-| 11   | Extract API key → validate sk-* → save to keys.csv            |
-| 12   | Redeem invite code + auto extract to omniroute.txt            |
+| Step | Description                                            |
+| ---- | ------------------------------------------------------ |
+| 1    | Launch Chromium with country-aware fingerprint         |
+| 2    | Generate temporary email                               |
+| 3    | Open landing page + accept cookies + click Sign Up     |
+| 4    | Region auto-detected                                   |
+| 5    | Fill email, password, confirm password, agree checkbox |
+| 6    | Submit form + captcha (manual/audio/2captcha)          |
+| 7    | Wait for OTP email → auto-extract → auto-fill          |
+| 8    | Wait for OAuth redirect to console                     |
+| 9    | Terms & agreements (checklist + confirm)               |
+| 10   | Navigate to API Keys → Create API Key                  |
+| 11   | Extract API key → validate sk-\* → save to keys.csv    |
+| 12   | Redeem invite code + auto extract to omniroute.txt     |
 
 ### Alibaba Cloud (9 steps)
 
-| Step | Description                                                                                       |
-| ---- | ------------------------------------------------------------------------------------------------- |
-| 1/9  | Launch Chromium (stealth + anti-fingerprint)                                                      |
-| 2/9  | Generate temporary email via Supabase                                                             |
-| 3/9  | Navigate to account.alibabacloud.com                                                              |
-| 4/9  | Select "Individual Account" (inside iframe)                                                       |
-| 5/9  | Click "Next"                                                                                      |
-| 6/9  | Fill email, password, confirm password (char-by-char typing)                                      |
-| 7/9  | Click "Sign Up" → solve Baxia slider captcha (auto/manual)                                        |
-| 8/9  | Select email tab → click "Send" → wait OTP → fill `#emailCaptcha`                                 |
-| 9/9  | Check "I agree" → Sign Up → open Model Studio in new tab → create API key → save to alibaba.csv   |
+| Step | Description                                                                                     |
+| ---- | ----------------------------------------------------------------------------------------------- |
+| 1/9  | Launch Chromium (stealth + anti-fingerprint)                                                    |
+| 2/9  | Generate temporary email via Supabase                                                           |
+| 3/9  | Navigate to account.alibabacloud.com                                                            |
+| 4/9  | Select "Individual Account" (inside iframe)                                                     |
+| 5/9  | Click "Next"                                                                                    |
+| 6/9  | Fill email, password, confirm password (char-by-char typing)                                    |
+| 7/9  | Click "Sign Up" → solve Baxia slider captcha (auto/manual)                                      |
+| 8/9  | Select email tab → click "Send" → wait OTP → fill `#emailCaptcha`                               |
+| 9/9  | Check "I agree" → Sign Up → open Model Studio in new tab → create API key → save to alibaba.csv |
 
 ### Qoder (9 steps per loop)
 
@@ -286,12 +298,14 @@ http://1.2.3.4:80,2026-06-27T20:00:00.000Z,2026-06-27T20:10:00.000Z,automated_qu
 ## Output Format
 
 ### keys.csv / alibaba.csv
+
 ```csv
 timestamp,email,password,api_key_name,api_key
 "2026-06-19T12:00:00.000Z","user_xxx@domain.com","***","auto-xxx","sk-xxxxxxxxxxxxxxxxx"
 ```
 
 ### omniroute.txt
+
 ```
 akun-1|sk-xxxxxxxxxxxxxxxxx
 akun-2|sk-yyyyyyyyyyyyyyyyy
