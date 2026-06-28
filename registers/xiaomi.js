@@ -524,17 +524,21 @@ async function gotoTolerant(page, url, opts = {}) {
     waitUntil = "domcontentloaded",
     timeout = 600000,
     settleAfter = 1500,
+    retries = 1,
   } = opts;
-  try {
-    await page.goto(url, { waitUntil, timeout });
-  } catch (e) {
-    const aborted = /ERR_ABORTED/.test(e?.message || "");
-    if (!aborted) throw e;
-    console.log(`  [nav] redirect aborted (ERR_ABORTED), waiting to settle...`);
-    await page
-      .waitForLoadState("domcontentloaded", { timeout })
-      .catch(() => {});
-    await sleep(settleAfter);
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await page.goto(url, { waitUntil, timeout });
+      return;
+    } catch (e) {
+      const aborted = /ERR_ABORTED/.test(e?.message || "");
+      if (!aborted) throw e;
+      console.log(`  [nav] redirect aborted (ERR_ABORTED), waiting to settle... (attempt ${attempt}/${retries})`);
+      await page
+        .waitForLoadState("domcontentloaded", { timeout })
+        .catch(() => {});
+      await sleep(settleAfter);
+    }
   }
 }
 
@@ -615,7 +619,7 @@ async function register() {
     await handleCookies(page);
     await sleep(rand(2000, 3000));
     console.log(`  Register URL: ${CONFIG.registerUrl}`);
-    await gotoTolerant(page, CONFIG.registerUrl);
+    await gotoTolerant(page, CONFIG.registerUrl, { retries: 3 });
 
     // Wait for Xiaomi registration page to load
     await page
