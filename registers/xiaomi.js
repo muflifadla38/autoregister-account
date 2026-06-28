@@ -328,7 +328,7 @@ function getCountryProfile(country) {
 let SELECTED_PROXY = "";
 let SELECTED_COUNTRY = "";
 
-async function getRandomProxy() {
+async function getNextProxy() {
   if (CONFIG.proxy) {
     if (isBlacklisted(CONFIG.proxy)) {
       console.log(`  [blacklist] Configured proxy is blacklisted, skipping.`);
@@ -344,11 +344,15 @@ async function getRandomProxy() {
     console.log(`  [blacklist] All proxies are blacklisted!`);
     return "";
   }
-  const picked = available[Math.floor(Math.random() * available.length)];
+  const picked = available[0];
   SELECTED_PROXY = picked.proxy;
   SELECTED_COUNTRY = picked.country || "";
+  console.log(`  [proxy] Using first available: ${picked.proxy} (${available.length} remaining)`);
   return picked.proxy;
 }
+
+// Alias for backward compat
+const getRandomProxy = getNextProxy;
 
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
 
