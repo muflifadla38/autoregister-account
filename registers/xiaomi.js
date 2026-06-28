@@ -745,7 +745,9 @@ async function register() {
 
       if (captchaHandled) {
         if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-          console.log("  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+          console.log(
+            "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+          );
           process.exitCode = 1;
           return;
         }
@@ -763,7 +765,9 @@ async function register() {
           );
       } else if (!checkboxClicked) {
         if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-          console.log("  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+          console.log(
+            "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+          );
           process.exitCode = 1;
           return;
         }
@@ -844,7 +848,9 @@ async function register() {
               console.log("  Custom captcha solved!");
             } else {
               if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-                console.log("  [SKIP] CapMonster failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+                console.log(
+                  "  [SKIP] CapMonster failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+                );
                 process.exitCode = 1;
                 return;
               }
@@ -904,14 +910,7 @@ async function register() {
                 "AUTO_SKIP_RATE_LIMIT:",
                 process.env.AUTO_SKIP_RATE_LIMIT,
               );
-              console.log(
-                "1. AUTO_SKIP_RATE_LIMIT === 'true':",
-                process.env.AUTO_SKIP_RATE_LIMIT === "true",
-              );
-              console.log(
-                "2. AUTO_SKIP_RATE_LIMIT === true:",
-                process.env.AUTO_SKIP_RATE_LIMIT === true,
-              );
+
               if (process.env.AUTO_SKIP_RATE_LIMIT === "true") {
                 console.log(
                   "  >>> AUTO_SKIP_RATE_LIMIT=true — aborting run, loop will skip.",
@@ -926,7 +925,9 @@ async function register() {
             `  Audio solver failed: ${e.message}. Falling back to manual solve...`,
           );
           if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-            console.log("  [SKIP] Audio solver failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+            console.log(
+              "  [SKIP] Audio solver failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+            );
             process.exitCode = 1;
             return;
           }
@@ -940,7 +941,9 @@ async function register() {
       await solveRecaptchaWith2captcha(page, CONFIG.captchaApiKey);
     } else {
       if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-        console.log("  [SKIP] Manual captcha mode but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+        console.log(
+          "  [SKIP] Manual captcha mode but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+        );
         process.exitCode = 1;
         return;
       }
@@ -1006,7 +1009,9 @@ async function register() {
     await otpSubmit.click();
 
     // Step 8: Wait for OAuth redirect chain to platform console
-    console.log(`[8/${TOTAL_STEPS}] Waiting for OAuth redirect to platform console...`);
+    console.log(
+      `[8/${TOTAL_STEPS}] Waiting for OAuth redirect to platform console...`,
+    );
     logger.info(`[8/${TOTAL_STEPS}] Waiting for OAuth redirect...`);
     await page
       .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 })
@@ -1453,17 +1458,25 @@ async function register() {
     if (proxyErrors.test(err.message)) {
       console.log("  [proxy] Proxy error detected, skipping to next proxy...");
       logger.warn("Proxy error detected, skipping to next proxy...");
-      if (process.env.USE_PROXY === "true" && process.env.USE_PROXY_CSV === "true" && SELECTED_PROXY) {
+      if (
+        process.env.USE_PROXY === "true" &&
+        process.env.USE_PROXY_CSV === "true" &&
+        SELECTED_PROXY
+      ) {
         try {
           const csvPath = path.join(ROOT, "proxies", "rechecked.csv");
           if (fs.existsSync(csvPath)) {
             const lines = fs.readFileSync(csvPath, "utf8").trim().split("\n");
-            const filtered = lines.filter((line) => !line.includes(SELECTED_PROXY));
+            const filtered = lines.filter(
+              (line) => !line.includes(SELECTED_PROXY),
+            );
             fs.writeFileSync(csvPath, filtered.join("\n") + "\n", "utf8");
             console.log(`  [proxy] Removed ${SELECTED_PROXY} from CSV`);
           }
         } catch (csvErr) {
-          console.log(`  [proxy] Failed to remove proxy from CSV: ${csvErr.message}`);
+          console.log(
+            `  [proxy] Failed to remove proxy from CSV: ${csvErr.message}`,
+          );
         }
       }
       await sleep(1000);
