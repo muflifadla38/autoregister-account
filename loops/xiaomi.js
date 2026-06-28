@@ -39,7 +39,7 @@ let currentProxy = null;
 let currentCountry = null;
 
 function getProxyInfo(env) {
-  if (env.USE_PROXY) {
+  if (env.USE_PROXY === "true") {
     if (available.length === 0) return { proxy: "", country: "" };
     const item = available[count % available.length];
     if (isBlacklisted(item.proxy)) return { proxy: "", country: "" };
@@ -61,7 +61,9 @@ function formatDuration(ms) {
 
 function printStatusBar() {
   const elapsed = formatDuration(Date.now() - loopStartTime);
-  console.log(`\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m`);
+  console.log(
+    `\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m`,
+  );
 }
 
 function printReport() {
@@ -135,21 +137,23 @@ function onKey(chunk) {
         available.splice(idx, 1);
         console.log(`\n[loop] Proxy removed from rotation: ${currentProxy}`);
         console.log(`  ${available.length} proxies remaining.`);
-  // Move current proxy to end of rotation
-  if (s === "m" || s === "M") {
-    if (currentProxy) {
-      const idx = available.findIndex((item) => item.proxy === currentProxy);
-      if (idx !== -1 && available.length > 1) {
-        const [item] = available.splice(idx, 1);
-        available.push(item);
-        console.log(`\n[loop] Proxy moved to last: ${currentProxy}`);
+        // Move current proxy to end of rotation
+        if (s === "m" || s === "M") {
+          if (currentProxy) {
+            const idx = available.findIndex(
+              (item) => item.proxy === currentProxy,
+            );
+            if (idx !== -1 && available.length > 1) {
+              const [item] = available.splice(idx, 1);
+              available.push(item);
+              console.log(`\n[loop] Proxy moved to last: ${currentProxy}`);
+            }
+          } else {
+            console.log("\n[loop] No proxy to move.");
+          }
+          return;
+        }
       }
-    } else {
-      console.log("\n[loop] No proxy to move.");
-    }
-    return;
-  }
-}
     } else {
       console.log("\n[loop] No proxy to remove.");
     }
@@ -179,9 +183,11 @@ function run() {
     ? `proxy: ${proxy.includes("@") ? proxy.split("@").pop() : proxy} (Country: ${country || "N/A"})`
     : "no proxy";
   console.log(`\n=== RUN #${count} (${proxyLabel}) ===\n`);
-  console.log("[loop] 's' skip · 'd' skip step · 'r' remove · 'b' ban · 'm' move last · 'q' quit");
+  console.log(
+    "[loop] 's' skip · 'd' skip step · 'r' remove · 'b' ban · 'm' move last · 'q' quit",
+  );
 
-  const env = { ...process.env, AUTO_SKIP_RATE_LIMIT: "1" };
+  const env = { ...process.env, AUTO_SKIP_RATE_LIMIT: "true" };
   if (proxy) env.PROXY = proxy;
   if (country) env.PROXY_COUNTRY = country;
 

@@ -382,7 +382,7 @@ async function handleTermsAgreement(page) {
 
   if (!hasTerms) {
     console.log("  No terms agreement detected, looping...");
-    handleTermsAgreement();
+    return await handleTermsAgreement(page);
   }
 
   console.log("  Terms agreement detected!");
@@ -876,9 +876,9 @@ async function register() {
               console.log(
                 "  >>> Auto audio solve will NOT work — IP is rate-limited.",
               );
-              if (process.env.AUTO_SKIP_RATE_LIMIT === "1") {
+              if (process.env.AUTO_SKIP_RATE_LIMIT === "true") {
                 console.log(
-                  "  >>> AUTO_SKIP_RATE_LIMIT=1 — aborting run, loop will skip.",
+                  "  >>> AUTO_SKIP_RATE_LIMIT=true — aborting run, loop will skip.",
                 );
                 process.exitCode = 1;
                 return;
@@ -922,11 +922,9 @@ async function register() {
     if (!otp) {
       console.log("  >>> Playing error sound alert");
       await playSound(SOUNDS.error);
-      console.log("  TIMEOUT: No OTP received. Check browser manually.");
-      console.log("  Browser stays open for manual intervention.");
-      // await page.screenshot({ path: 'timeout.png' });
-      // Don't close browser so user can intervene
-      await new Promise(() => {}); // Keep alive
+      console.log("  TIMEOUT: No OTP received. aborting run, loop will skip.");
+
+      process.exitCode = 1;
       return;
     }
 
