@@ -565,7 +565,7 @@ async function register() {
       "--no-sandbox",
       "--disable-dev-shm-usage",
       "--disable-popup-blocking",
-      "--start-maximized",
+      "--start-minimized",
     ],
   };
 
