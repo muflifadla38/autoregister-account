@@ -70,19 +70,23 @@ function formatDuration(ms) {
 
 function renderHeadlessStatus() {
   if (!HEADLESS) return;
+  const rows = process.stdout.rows || 40;
   const elapsed = formatDuration(Date.now() - loopStartTime);
   const runElapsed = runStartTime ? formatDuration(Date.now() - runStartTime) : "0m 0s";
   const statusColor = runStatus === "RUNNING" ? "\x1b[33m" : runStatus === "SUCCESS" ? "\x1b[32m" : "\x1b[31m";
 
+  const row1 = rows - 2;
+  const row2 = rows - 1;
+  const row3 = rows;
+
   process.stdout.write(
-    "\x1b[s" +
-    "\x1b[1;1H\x1b[2K" +
+    `\x1b[${row1};1H\x1b[2K` +
     `\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m` +
-    "\x1b[2;1H\x1b[2K" +
+    `\x1b[${row2};1H\x1b[2K` +
     `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${runStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}` +
-    "\x1b[3;1H\x1b[2K" +
+    `\x1b[${row3};1H\x1b[2K` +
     (lastError ? `\x1b[31m  ${lastError}\x1b[0m` : "") +
-    "\x1b[u"
+    `\x1b[4;1H`  // move cursor back to scroll area
   );
 }
 
@@ -90,7 +94,9 @@ let headlessInterval = null;
 function startHeadlessDisplay() {
   if (!HEADLESS) return;
   const rows = process.stdout.rows || 40;
-  process.stdout.write(`\x1b[4;${rows}r`);
+  const scrollEnd = rows - 3;
+  process.stdout.write("\x1B[2J\x1B[0f"); // clear terminal
+  process.stdout.write(`\x1b[1;${scrollEnd}r`); // scroll region: rows 1 to (rows-3)
   renderHeadlessStatus();
   headlessInterval = setInterval(renderHeadlessStatus, 1000);
 }
@@ -100,7 +106,10 @@ function stopHeadlessDisplay() {
     clearInterval(headlessInterval);
     headlessInterval = null;
   }
-  process.stdout.write("\x1b[r");
+  const rows = process.stdout.rows || 40;
+  process.stdout.write("\x1b[r");           // reset scroll region
+  process.stdout.write(`\x1b[${rows};1H`); // move cursor to bottom
+  process.stdout.write("\x1b[0m");          // reset colors
 }
 
 // ─── TERMINAL DISPLAY ───────────────────────────────
@@ -324,6 +333,7 @@ function run() {
 }
 
 process.on("SIGINT", () => {
+  stopHeadlessDisplay();
   logger.info("Stopped by user.", true);
   stopping = true;
   if (!running) {
@@ -339,7 +349,6 @@ process.on("SIGINT", () => {
 process.on("exit", stopHeadlessDisplay);
 
 if (HEADLESS) {
-  process.stdout.write("\x1B[2J\x1B[0f");
   startHeadlessDisplay();
 }
 run();
