@@ -10,6 +10,7 @@ const {
   isBlacklisted,
   cleanExpiredBlacklist,
   loadProxies,
+  addToBlacklist,
 } = require("../utils/proxy.js");
 
 const ROOT = path.join(__dirname, "..");
@@ -34,6 +35,8 @@ let running = false;
 let stopping = false;
 let keypressEnabled = false;
 let loopStartTime = Date.now();
+let currentProxy = null;
+let currentCountry = null;
 
 function getProxyInfo(env) {
   if (env.USE_PROXY) {
@@ -122,17 +125,47 @@ function onKey(chunk) {
     if (running && currentChild) {
       console.log("\n[loop] Step skip requested.");
     }
+    return;
+  }
+  // Remove current proxy from rotation
+  if (s === "r" || s === "R") {
+    if (currentProxy) {
+      const idx = available.findIndex((item) => item.proxy === currentProxy);
+      if (idx !== -1) {
+        available.splice(idx, 1);
+        console.log(`\n[loop] Proxy removed from rotation: ${currentProxy}`);
+        console.log(`  ${available.length} proxies remaining.`);
+      }
+    } else {
+      console.log("\n[loop] No proxy to remove.");
+    }
+    return;
+  }
+  // Ban current proxy (blacklist)
+  if (s === "b" || s === "B") {
+    if (currentProxy) {
+      addToBlacklist(currentProxy, "manual_ban", 60);
+      const idx = available.findIndex((item) => item.proxy === currentProxy);
+      if (idx !== -1) available.splice(idx, 1);
+      console.log(`\n[loop] Proxy banned for 60min: ${currentProxy}`);
+      if (running && currentChild) currentChild.kill("SIGINT");
+    } else {
+      console.log("\n[loop] No proxy to ban.");
+    }
+    return;
   }
 }
 
 function run() {
   count++;
   const { proxy, country } = getProxyInfo(process.env);
+  currentProxy = proxy;
+  currentCountry = country;
   const proxyLabel = proxy
     ? `proxy: ${proxy.includes("@") ? proxy.split("@").pop() : proxy} (Country: ${country || "N/A"})`
     : "no proxy";
   console.log(`\n=== RUN #${count} (${proxyLabel}) ===\n`);
-  console.log("[loop] Press 's' to skip run · 'd' to skip step · 'q' to quit");
+  console.log("[loop] 's' skip run · 'd' skip step · 'r' remove proxy · 'b' ban proxy · 'q' quit");
 
   const env = { ...process.env, AUTO_SKIP_RATE_LIMIT: "1" };
   if (proxy) env.PROXY = proxy;
