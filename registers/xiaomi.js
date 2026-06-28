@@ -347,7 +347,9 @@ async function getNextProxy() {
   const picked = available[0];
   SELECTED_PROXY = picked.proxy;
   SELECTED_COUNTRY = picked.country || "";
-  console.log(`  [proxy] Using first available: ${picked.proxy} (${available.length} remaining)`);
+  console.log(
+    `  [proxy] Using first available: ${picked.proxy} (${available.length} remaining)`,
+  );
   return picked.proxy;
 }
 
@@ -533,7 +535,9 @@ async function gotoTolerant(page, url, opts = {}) {
     } catch (e) {
       const aborted = /ERR_ABORTED/.test(e?.message || "");
       if (!aborted) throw e;
-      console.log(`  [nav] redirect aborted (ERR_ABORTED), waiting to settle... (attempt ${attempt}/${retries})`);
+      console.log(
+        `  [nav] redirect aborted (ERR_ABORTED), waiting to settle... (attempt ${attempt}/${retries})`,
+      );
       await page
         .waitForLoadState("domcontentloaded", { timeout })
         .catch(() => {});
@@ -958,7 +962,7 @@ async function register() {
     // Step 8: Wait for OAuth redirect chain to platform console
     console.log("[8/12] Waiting for OAuth redirect to platform console...");
     await page
-      .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 15000 })
+      .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 })
       .catch(async () => {
         console.log("  Redirect not detected, navigating manually...");
         await page.goto(CONFIG.consoleUrl, {
