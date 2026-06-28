@@ -31,8 +31,10 @@ const {
   cleanExpiredBlacklist,
 } = require("../utils/proxy.js");
 const { extractKeys } = require("../utils/extract-keys.js");
+const { logger } = require("../utils/logger.js");
 
 const ffmpegPath = findFfmpeg();
+const HEADLESS = process.env.HEADLESS === "true";
 
 let skipStep = false;
 let keypressEnabled = false;
@@ -548,14 +550,16 @@ async function gotoTolerant(page, url, opts = {}) {
 
 async function register() {
   const startTime = Date.now();
+  const TOTAL_STEPS = process.env.USE_REFERRAL_CODE === "true" ? 12 : 11;
   enableStepKeypress();
   if (process.env.USE_PROXY === "true") {
     CONFIG.proxy = await getRandomProxy();
   }
 
-  console.log("[1/12] Launching browser...");
+  console.log(`[1/${TOTAL_STEPS}] Launching browser...`);
+  logger.info(`[1/${TOTAL_STEPS}] Launching browser...`);
   const launchOpts = {
-    headless: false,
+    headless: HEADLESS,
     args: [
       "--no-sandbox",
       "--disable-dev-shm-usage",
@@ -609,14 +613,16 @@ async function register() {
 
   try {
     // Step 1: Create temp email
-    console.log("[2/12] Creating temporary email...");
+    console.log(`[2/${TOTAL_STEPS}] Creating temporary email...`);
+    logger.info(`[2/${TOTAL_STEPS}] Creating temporary email...`);
     const tempmail = new TempMail();
     const inbox = await tempmail.createInbox();
     const email = inbox.address;
     console.log(`  Email: ${email}`);
 
     // Step 2: Navigate to landing page → click Sign Up → redirect to registration
-    console.log("[3/12] Opening landing page...");
+    console.log(`[3/${TOTAL_STEPS}] Opening landing page...`);
+    logger.info(`[3/${TOTAL_STEPS}] Opening landing page...`);
     console.log(`  Landing URL: ${CONFIG.landingUrl}`);
     await gotoTolerant(page, CONFIG.landingUrl);
     console.log("  Waiting for cookie...");
@@ -634,11 +640,13 @@ async function register() {
 
     // Step 3: Select region (skipped - auto-detected from _uRegion param)
     console.log(
-      "[4/12] Region auto-detected (via URL param), skipping manual selection...",
+      `[4/${TOTAL_STEPS}] Region auto-detected (via URL param), skipping manual selection...`,
     );
+    logger.info(`[4/${TOTAL_STEPS}] Region auto-detected`);
 
     // Step 4: Fill email
-    console.log("[5/12] Filling registration form...");
+    console.log(`[5/${TOTAL_STEPS}] Filling registration form...`);
+    logger.info(`[5/${TOTAL_STEPS}] Filling registration form...`);
     // Type email with human-like delays
     const emailInput = page
       .locator('input[type="text"]')
@@ -683,7 +691,8 @@ async function register() {
     console.log("  Screenshot saved: before_submit.png");
 
     // Step 5: Submit and handle captcha
-    console.log("[6/12] Submitting form (captcha may appear)...");
+    console.log(`[6/${TOTAL_STEPS}] Submitting form`);
+    logger.info(`[6/${TOTAL_STEPS}] Submitting form`);
     await sleep(rand(1500, 4000));
     const submitBtn = page
       .locator(
@@ -735,6 +744,11 @@ async function register() {
       }
 
       if (captchaHandled) {
+        if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+          console.log("  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+          process.exitCode = 1;
+          return;
+        }
         console.log("  >>> Please solve the captcha manually in the browser.");
         console.log("  >>> Playing manual-captcha sound alert");
         await playSound(SOUNDS.manualCaptcha);
@@ -748,6 +762,11 @@ async function register() {
             "  [WARN] Captcha detection timeout, proceeding anyway...",
           );
       } else if (!checkboxClicked) {
+        if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+          console.log("  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+          process.exitCode = 1;
+          return;
+        }
         console.log("  [WARN] Could not click reCAPTCHA checkbox.");
         console.log("  >>> Please solve the captcha manually in the browser.");
         console.log("  >>> Playing manual-captcha sound alert.");
@@ -824,6 +843,11 @@ async function register() {
             if (solved) {
               console.log("  Custom captcha solved!");
             } else {
+              if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+                console.log("  [SKIP] CapMonster failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+                process.exitCode = 1;
+                return;
+              }
               console.log("  >>> CapMonster failed — please solve manually.");
               console.log("  >>> Playing manual-captcha sound alert!");
               await playSound(SOUNDS.manualCaptcha);
@@ -876,6 +900,18 @@ async function register() {
               console.log(
                 "  >>> Auto audio solve will NOT work — IP is rate-limited.",
               );
+              console.log(
+                "AUTO_SKIP_RATE_LIMIT:",
+                process.env.AUTO_SKIP_RATE_LIMIT,
+              );
+              console.log(
+                "1. AUTO_SKIP_RATE_LIMIT === 'true':",
+                process.env.AUTO_SKIP_RATE_LIMIT === "true",
+              );
+              console.log(
+                "2. AUTO_SKIP_RATE_LIMIT === true:",
+                process.env.AUTO_SKIP_RATE_LIMIT === true,
+              );
               if (process.env.AUTO_SKIP_RATE_LIMIT === "true") {
                 console.log(
                   "  >>> AUTO_SKIP_RATE_LIMIT=true — aborting run, loop will skip.",
@@ -889,6 +925,11 @@ async function register() {
           console.log(
             `  Audio solver failed: ${e.message}. Falling back to manual solve...`,
           );
+          if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+            console.log("  [SKIP] Audio solver failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+            process.exitCode = 1;
+            return;
+          }
           console.log("  >>>Playing manual-captcha sound alert");
           await playSound(SOUNDS.manualCaptcha);
           await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
@@ -898,6 +939,11 @@ async function register() {
       console.log("  Auto-solving captcha with 2captcha...");
       await solveRecaptchaWith2captcha(page, CONFIG.captchaApiKey);
     } else {
+      if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+        console.log("  [SKIP] Manual captcha mode but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...");
+        process.exitCode = 1;
+        return;
+      }
       console.log(
         "  >>> CAPTCHA: Please solve the captcha manually in the browser.",
       );
@@ -916,13 +962,15 @@ async function register() {
     }
 
     // Step 7: Wait for OTP email
-    console.log("[7/12] Waiting for OTP email...");
+    console.log(`[7/${TOTAL_STEPS}] Waiting for OTP email...`);
+    logger.info(`[7/${TOTAL_STEPS}] Waiting for OTP email...`);
     const otp = await tempmail.waitForOtp(email, CONFIG.otpTimeout, 3000);
 
     if (!otp) {
       console.log("  >>> Playing error sound alert");
       await playSound(SOUNDS.error);
       console.log("  TIMEOUT: No OTP received. aborting run, loop will skip.");
+      logger.error("TIMEOUT: No OTP received. aborting run, loop will skip.");
 
       process.exitCode = 1;
       return;
@@ -958,7 +1006,8 @@ async function register() {
     await otpSubmit.click();
 
     // Step 8: Wait for OAuth redirect chain to platform console
-    console.log("[8/12] Waiting for OAuth redirect to platform console...");
+    console.log(`[8/${TOTAL_STEPS}] Waiting for OAuth redirect to platform console...`);
+    logger.info(`[8/${TOTAL_STEPS}] Waiting for OAuth redirect...`);
     await page
       .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 })
       .catch(async () => {
@@ -970,7 +1019,8 @@ async function register() {
       });
 
     // Step 9: Handle terms & agreements (appears after redirect)
-    console.log("[9/12] Checking terms & agreements...");
+    console.log(`[9/${TOTAL_STEPS}] Checking terms & agreements...`);
+    logger.info(`[9/${TOTAL_STEPS}] Checking terms & agreements...`);
     await handleTermsAgreement(page);
 
     await handleCookies(page);
@@ -980,7 +1030,8 @@ async function register() {
     console.log("  Landed on platform console");
 
     // Step 10: Create API Key
-    console.log("[10/12] Creating API Key...");
+    console.log(`[10/${TOTAL_STEPS}] Creating API Key...`);
+    logger.info(`[10/${TOTAL_STEPS}] Creating API Key...`);
 
     // Try common API key page URLs
     const apiKeyPaths = [
@@ -1123,7 +1174,8 @@ async function register() {
     // await page.screenshot({ path: 'api_key_created.png' });
 
     // Step 10: Extract and save the API key
-    console.log("[11/12] Extracting API Key...");
+    console.log(`[11/${TOTAL_STEPS}] Extracting API Key...`);
+    logger.info(`[11/${TOTAL_STEPS}] Extracting API Key...`);
     let apiKey = "";
 
     // Try to find the API key value on the page
@@ -1303,6 +1355,7 @@ async function register() {
         process.env.REFERRAL_CODE
       ) {
         console.log("[12/12] Redeeming invite code...");
+        logger.info("[12/12] Redeeming invite code...");
         try {
           const inviteBtn = page
             .locator('button:has-text("Enter invite code")')
@@ -1393,11 +1446,26 @@ async function register() {
     await sleep(5000);
   } catch (err) {
     console.error("ERROR:", err.message);
+    logger.error(`Registration failed: ${err.message}`);
     process.exitCode = 1;
     const proxyErrors =
       /ERR_TIMED_OUT|ERR_CONNECTION_REFUSED|ERR_PROXY|ERR_TUNNEL|ERR_CERT|ECONNREFUSED|ECONNRESET|ETIMEDOUT/;
     if (proxyErrors.test(err.message)) {
       console.log("  [proxy] Proxy error detected, skipping to next proxy...");
+      logger.warn("Proxy error detected, skipping to next proxy...");
+      if (process.env.USE_PROXY === "true" && process.env.USE_PROXY_CSV === "true" && SELECTED_PROXY) {
+        try {
+          const csvPath = path.join(ROOT, "proxies", "rechecked.csv");
+          if (fs.existsSync(csvPath)) {
+            const lines = fs.readFileSync(csvPath, "utf8").trim().split("\n");
+            const filtered = lines.filter((line) => !line.includes(SELECTED_PROXY));
+            fs.writeFileSync(csvPath, filtered.join("\n") + "\n", "utf8");
+            console.log(`  [proxy] Removed ${SELECTED_PROXY} from CSV`);
+          }
+        } catch (csvErr) {
+          console.log(`  [proxy] Failed to remove proxy from CSV: ${csvErr.message}`);
+        }
+      }
       await sleep(1000);
     } else {
       console.log("  >>> Playing error sound alert");
