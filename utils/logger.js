@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const LOGS_DIR = path.join(__dirname, "..", "logs");
+const HEADLESS = process.env.HEADLESS === "true";
 
 function getDateStr() {
   const d = new Date();
@@ -29,13 +30,32 @@ function appendLog(level, msg) {
   } catch (_) {}
 }
 
-const logger = {
-  info(msg) { appendLog("INFO", msg); },
-  warn(msg) { appendLog("WARN", msg); },
-  error(msg) { appendLog("ERROR", msg); },
-  debug(msg) { appendLog("DEBUG", msg); },
+function printConsole(msg) {
+  return !HEADLESS;
+}
 
-  log(level, msg) { appendLog(level, msg); },
+const logger = {
+  info(msg, print = false) {
+    appendLog("INFO", msg);
+    if (print) console.log(msg);
+  },
+  warn(msg, print = false) {
+    appendLog("WARN", msg);
+    if (print) console.log(msg);
+  },
+  error(msg, print = false) {
+    appendLog("ERROR", msg);
+    if (print) console.error(msg);
+  },
+  debug(msg, print = false) {
+    appendLog("DEBUG", msg);
+    if (print) console.log(msg);
+  },
+
+  log(level, msg, print = false) {
+    appendLog(level, msg);
+    if (print) console.log(msg);
+  },
 
   getDateStr,
   getTimeStr,

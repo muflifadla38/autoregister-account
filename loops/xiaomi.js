@@ -25,10 +25,7 @@ const PROXIES = process.env.PROXIES
   ? process.env.PROXIES.split(",").map((p) => ({ proxy: p.trim(), country: "" }))
   : loadProxies(path.join(ROOT, "proxies", "rechecked.csv"));
 const available = PROXIES.filter((item) => !isBlacklisted(item.proxy));
-console.log(
-  `Loaded ${PROXIES.length} proxies (${available.length} available, ${PROXIES.length - available.length} blacklisted).`,
-);
-logger.info(`Loaded ${PROXIES.length} proxies (${available.length} available)`);
+logger.info(`Loaded ${PROXIES.length} proxies (${available.length} available, ${PROXIES.length - available.length} blacklisted).`, true);
 
 let count = 0;
 let success = 0;
@@ -76,14 +73,13 @@ function renderHeadlessStatus() {
   const elapsed = formatDuration(Date.now() - loopStartTime);
   const runElapsed = runStartTime ? formatDuration(Date.now() - runStartTime) : "0m 0s";
   const statusColor = runStatus === "RUNNING" ? "\x1b[33m" : runStatus === "SUCCESS" ? "\x1b[32m" : "\x1b[31m";
-  const errLine = lastError ? `\n  \x1b[31m${lastError}\x1b[0m` : "";
 
   process.stdout.write(
     "\x1b[s" +
     "\x1b[1;1H\x1b[2K" +
     `\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m` +
     "\x1b[2;1H\x1b[2K" +
-    `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${runStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}${errLine}` +
+    `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${runStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}` +
     "\x1b[3;1H\x1b[2K" +
     (lastError ? `\x1b[31m  ${lastError}\x1b[0m` : "") +
     "\x1b[u"
@@ -94,7 +90,7 @@ let headlessInterval = null;
 function startHeadlessDisplay() {
   if (!HEADLESS) return;
   const rows = process.stdout.rows || 40;
-  process.stdout.write(`\x1b[4;${rows}r`); // scroll region rows 4-end
+  process.stdout.write(`\x1b[4;${rows}r`);
   renderHeadlessStatus();
   headlessInterval = setInterval(renderHeadlessStatus, 1000);
 }
@@ -112,21 +108,18 @@ function stopHeadlessDisplay() {
 function printStatusBar() {
   if (HEADLESS) return;
   const elapsed = formatDuration(Date.now() - loopStartTime);
-  console.log(
-    `\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m`,
-  );
+  logger.info(`LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed}`, true);
 }
 
 function printReport() {
   stopHeadlessDisplay();
   const elapsed = formatDuration(Date.now() - loopStartTime);
-  console.log("\n=========== FINAL REPORT ===========");
-  console.log(`  Successful : ${success}`);
-  console.log(`  Failed     : ${failed}`);
-  console.log(`  Total runs : ${count}`);
-  console.log(`  Runtime    : ${elapsed}`);
-  console.log("====================================\n");
-  logger.info(`FINAL REPORT: success=${success} failed=${failed} total=${count} runtime=${elapsed}`);
+  logger.info("=========== FINAL REPORT ===========", true);
+  logger.info(`  Successful : ${success}`, true);
+  logger.info(`  Failed     : ${failed}`, true);
+  logger.info(`  Total runs : ${count}`, true);
+  logger.info(`  Runtime    : ${elapsed}`, true);
+  logger.info("====================================", true);
 }
 
 // ─── KEYPRESS ───────────────────────────────────────
@@ -156,8 +149,7 @@ function disableKeypress() {
 function onKey(chunk) {
   const s = String(chunk);
   if (s === "\u0003" || s === "q" || s === "Q") {
-    console.log("\n[loop] Stop requested.");
-    logger.info("Stop requested by user");
+    logger.info("[loop] Stop requested.", true);
     stopping = true;
     if (!running) { disableKeypress(); printReport(); process.exit(0); }
     if (currentChild) currentChild.kill("SIGINT");
@@ -165,14 +157,13 @@ function onKey(chunk) {
   }
   if (s === "s" || s === "S" || s === "n" || s === "N") {
     if (running && currentChild) {
-      console.log("\n[loop] Skip requested — killing current run.");
-      logger.info(`Skip requested for run #${count}`);
+      logger.info("[loop] Skip requested — killing current run.", true);
       currentChild.kill("SIGINT");
     }
     return;
   }
   if (s === "d" || s === "D") {
-    if (running && currentChild) console.log("\n[loop] Step skip requested.");
+    if (running && currentChild) logger.info("[loop] Step skip requested.", true);
     return;
   }
   if (s === "r" || s === "R") {
@@ -180,11 +171,10 @@ function onKey(chunk) {
       const idx = available.findIndex((item) => item.proxy === currentProxy);
       if (idx !== -1) {
         available.splice(idx, 1);
-        console.log(`\n[loop] Proxy removed: ${currentProxy} (${available.length} remaining)`);
-        logger.info(`Proxy removed from rotation: ${currentProxy}`);
+        logger.info(`[loop] Proxy removed: ${currentProxy} (${available.length} remaining)`, true);
       }
     } else {
-      console.log("\n[loop] No proxy to remove.");
+      logger.info("[loop] No proxy to remove.", true);
     }
     return;
   }
@@ -193,11 +183,10 @@ function onKey(chunk) {
       addToBlacklist(currentProxy, "manual_ban", 60);
       const idx = available.findIndex((item) => item.proxy === currentProxy);
       if (idx !== -1) available.splice(idx, 1);
-      console.log(`\n[loop] Proxy banned 60min: ${currentProxy}`);
-      logger.info(`Proxy banned: ${currentProxy}`);
+      logger.info(`[loop] Proxy banned 60min: ${currentProxy}`, true);
       if (running && currentChild) currentChild.kill("SIGINT");
     } else {
-      console.log("\n[loop] No proxy to ban.");
+      logger.info("[loop] No proxy to ban.", true);
     }
     return;
   }
@@ -207,10 +196,10 @@ function onKey(chunk) {
       if (idx !== -1 && available.length > 1) {
         const [item] = available.splice(idx, 1);
         available.push(item);
-        console.log(`\n[loop] Proxy moved to last: ${currentProxy}`);
+        logger.info(`[loop] Proxy moved to last: ${currentProxy}`, true);
       }
     } else {
-      console.log("\n[loop] No proxy to move.");
+      logger.info("[loop] No proxy to move.", true);
     }
     return;
   }
@@ -261,8 +250,8 @@ function run() {
     : "no proxy";
 
   if (!HEADLESS) {
-    console.log(`\n=== RUN #${count} (${proxyLabel}) ===\n`);
-    console.log("[loop] 's' skip · 'd' skip step · 'r' remove · 'b' ban · 'm' move last · 'q' quit");
+    logger.info(`\n=== RUN #${count} (${proxyLabel}) ===`, true);
+    logger.info("[loop] 's' skip · 'd' skip step · 'r' remove · 'b' ban · 'm' move last · 'q' quit", true);
   }
   logger.info(`RUN #${count} started — ${proxyLabel}`);
 
@@ -274,7 +263,6 @@ function run() {
   enableKeypress();
 
   if (HEADLESS) {
-    // Capture output for parsing, don't show in terminal
     currentChild = spawn("node", ["register.js", "xiaomi"], {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: ROOT,
@@ -314,15 +302,11 @@ function run() {
       success++;
       runStatus = "SUCCESS";
       lastError = "";
-      if (!HEADLESS) console.log(`\nRun #${count} completed (${runElapsed}).`);
-      logger.info(`Run #${count} completed (${runElapsed})`);
+      logger.info(`Run #${count} completed (${runElapsed}).`, true);
     } else {
       failed++;
       runStatus = "FAILED";
-      if (!HEADLESS) {
-        console.log(`\nRun #${count} stopped (code ${code}${signal ? `, signal ${signal}` : ""}) (${runElapsed}).`);
-      }
-      logger.info(`Run #${count} stopped (code ${code}) (${runElapsed})`);
+      logger.info(`Run #${count} stopped (code ${code}${signal ? `, signal ${signal}` : ""}) (${runElapsed}).`, true);
     }
 
     if (HEADLESS) renderHeadlessStatus();
@@ -334,15 +318,13 @@ function run() {
       process.exit(0);
     }
     const delay = 10000 + Math.floor(Math.random() * 10000);
-    if (!HEADLESS) console.log(`Waiting ${Math.round(delay / 1000)}s before next run...\n`);
-    logger.info(`Waiting ${Math.round(delay / 1000)}s before next run`);
+    logger.info(`Waiting ${Math.round(delay / 1000)}s before next run...`, true);
     setTimeout(run, delay);
   });
 }
 
 process.on("SIGINT", () => {
-  console.log("\nStopped by user.");
-  logger.info("Stopped by user (SIGINT)");
+  logger.info("Stopped by user.", true);
   stopping = true;
   if (!running) {
     disableKeypress();
@@ -357,7 +339,7 @@ process.on("SIGINT", () => {
 process.on("exit", stopHeadlessDisplay);
 
 if (HEADLESS) {
-  console.log("\x1B[2J\x1B[0f"); // clear terminal
+  process.stdout.write("\x1B[2J\x1B[0f");
   startHeadlessDisplay();
 }
 run();

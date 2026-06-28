@@ -51,7 +51,7 @@ function enableStepKeypress() {
       const s = String(chunk);
       if (s === "d" || s === "D") {
         skipStep = true;
-        console.log("\n  [skip] Step skip requested...");
+        logger.info("\n  [skip] Step skip requested...", true);
       }
     });
   } catch (_) {}
@@ -161,7 +161,7 @@ const FREE_PROXIES = process.env.PROXIES
   : loadProxies(path.join(ROOT, "proxies", "rechecked.csv"));
 
 cleanExpiredBlacklist();
-console.log(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`);
+  logger.info(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`, true);
 
 const COUNTRY_PROFILES = {
   US: {
@@ -333,7 +333,7 @@ let SELECTED_COUNTRY = "";
 async function getNextProxy() {
   if (CONFIG.proxy) {
     if (isBlacklisted(CONFIG.proxy)) {
-      console.log(`  [blacklist] Configured proxy is blacklisted, skipping.`);
+      logger.info(`  [blacklist] Configured proxy is blacklisted, skipping.`, true);
       return "";
     }
     SELECTED_PROXY = CONFIG.proxy;
@@ -343,14 +343,15 @@ async function getNextProxy() {
   if (FREE_PROXIES.length === 0) return "";
   const available = FREE_PROXIES.filter((item) => !isBlacklisted(item.proxy));
   if (available.length === 0) {
-    console.log(`  [blacklist] All proxies are blacklisted!`);
+    logger.info(`  [blacklist] All proxies are blacklisted!`, true);
     return "";
   }
   const picked = available[0];
   SELECTED_PROXY = picked.proxy;
   SELECTED_COUNTRY = picked.country || "";
-  console.log(
+  logger.info(
     `  [proxy] Using first available: ${picked.proxy} (${available.length} remaining)`,
+    true,
   );
   return picked.proxy;
 }
@@ -383,11 +384,11 @@ async function handleTermsAgreement(page) {
   }
 
   if (!hasTerms) {
-    console.log("  No terms agreement detected, looping...");
+    logger.info("  No terms agreement detected, looping...", true);
     return await handleTermsAgreement(page);
   }
 
-  console.log("  Terms agreement detected!");
+  logger.info("  Terms agreement detected!", true);
 
   // Check the agreement checkbox
   const checkboxSelectors = [
@@ -404,7 +405,7 @@ async function handleTermsAgreement(page) {
         await cb.check();
       }
       checked = true;
-      console.log("  Agreement checkbox: checked");
+      logger.info("  Agreement checkbox: checked", true);
       break;
     }
   }
@@ -418,7 +419,7 @@ async function handleTermsAgreement(page) {
       .first();
     if (await labelEl.isVisible({ timeout: 60000 }).catch(() => false)) {
       await labelEl.click();
-      console.log("  Agreement label clicked");
+      logger.info("  Agreement label clicked", true);
       checked = true;
     }
   }
@@ -439,13 +440,13 @@ async function handleTermsAgreement(page) {
     const btn = page.locator(selector).first();
     if (await btn.isVisible({ timeout: 60000 }).catch(() => false)) {
       await btn.click();
-      console.log("  Terms confirmed");
+      logger.info("  Terms confirmed", true);
       await sleep(2000);
       return;
     }
   }
 
-  console.log("  [WARN] Confirm button not found, proceeding anyway...");
+  logger.info("  [WARN] Confirm button not found, proceeding anyway...", true);
 }
 
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
@@ -537,8 +538,9 @@ async function gotoTolerant(page, url, opts = {}) {
     } catch (e) {
       const aborted = /ERR_ABORTED/.test(e?.message || "");
       if (!aborted) throw e;
-      console.log(
+      logger.info(
         `  [nav] redirect aborted (ERR_ABORTED), waiting to settle... (attempt ${attempt}/${retries})`,
+        true,
       );
       await page
         .waitForLoadState("domcontentloaded", { timeout })
@@ -556,8 +558,7 @@ async function register() {
     CONFIG.proxy = await getRandomProxy();
   }
 
-  console.log(`[1/${TOTAL_STEPS}] Launching browser...`);
-  logger.info(`[1/${TOTAL_STEPS}] Launching browser...`);
+  logger.info(`[1/${TOTAL_STEPS}] Launching browser...`, true);
   const launchOpts = {
     headless: HEADLESS,
     args: [
@@ -582,14 +583,16 @@ async function register() {
 
   if (CONFIG.proxy) {
     launchOpts.proxy = parseProxy(CONFIG.proxy);
-    console.log(
+    logger.info(
       `  Using proxy: ${CONFIG.proxy.includes("@") ? CONFIG.proxy.split("@").pop() : CONFIG.proxy} (Country: ${SELECTED_COUNTRY || "N/A"})`,
+      true,
     );
   }
   const browser = await chromium.launch(launchOpts);
   const profile = getCountryProfile(SELECTED_COUNTRY);
-  console.log(
+  logger.info(
     `  [fingerprint] Country: ${SELECTED_COUNTRY || "N/A"} → locale=${profile.locale}, tz=${profile.timezone}, platform=${profile.platform}`,
+    true,
   );
 
   const contextOpts = {
@@ -613,22 +616,20 @@ async function register() {
 
   try {
     // Step 1: Create temp email
-    console.log(`[2/${TOTAL_STEPS}] Creating temporary email...`);
-    logger.info(`[2/${TOTAL_STEPS}] Creating temporary email...`);
+    logger.info(`[2/${TOTAL_STEPS}] Creating temporary email...`, true);
     const tempmail = new TempMail();
     const inbox = await tempmail.createInbox();
     const email = inbox.address;
-    console.log(`  Email: ${email}`);
+    logger.info(`  Email: ${email}`, true);
 
     // Step 2: Navigate to landing page → click Sign Up → redirect to registration
-    console.log(`[3/${TOTAL_STEPS}] Opening landing page...`);
-    logger.info(`[3/${TOTAL_STEPS}] Opening landing page...`);
-    console.log(`  Landing URL: ${CONFIG.landingUrl}`);
+    logger.info(`[3/${TOTAL_STEPS}] Opening landing page...`, true);
+    logger.info(`  Landing URL: ${CONFIG.landingUrl}`, true);
     await gotoTolerant(page, CONFIG.landingUrl);
-    console.log("  Waiting for cookie...");
+    logger.info("  Waiting for cookie...", true);
     await handleCookies(page);
     await sleep(rand(2000, 3000));
-    console.log(`  Register URL: ${CONFIG.registerUrl}`);
+    logger.info(`  Register URL: ${CONFIG.registerUrl}`, true);
     await gotoTolerant(page, CONFIG.registerUrl, { retries: 3 });
 
     // Wait for Xiaomi registration page to load
@@ -639,14 +640,14 @@ async function register() {
     await handleCookies(page);
 
     // Step 3: Select region (skipped - auto-detected from _uRegion param)
-    console.log(
+    logger.info(
       `[4/${TOTAL_STEPS}] Region auto-detected (via URL param), skipping manual selection...`,
+      true,
     );
     logger.info(`[4/${TOTAL_STEPS}] Region auto-detected`);
 
     // Step 4: Fill email
-    console.log(`[5/${TOTAL_STEPS}] Filling registration form...`);
-    logger.info(`[5/${TOTAL_STEPS}] Filling registration form...`);
+    logger.info(`[5/${TOTAL_STEPS}] Filling registration form...`, true);
     // Type email with human-like delays
     const emailInput = page
       .locator('input[type="text"]')
@@ -683,16 +684,15 @@ async function register() {
       if (!isChecked) {
         await termsCheckbox.check();
       }
-      console.log("  Terms checkbox: checked");
+      logger.info("  Terms checkbox: checked", true);
     }
 
     // Take screenshot for debugging
     // await page.screenshot({ path: 'before_submit.png' });
-    console.log("  Screenshot saved: before_submit.png");
+    logger.info("  Screenshot saved: before_submit.png", true);
 
     // Step 5: Submit and handle captcha
-    console.log(`[6/${TOTAL_STEPS}] Submitting form`);
-    logger.info(`[6/${TOTAL_STEPS}] Submitting form`);
+    logger.info(`[6/${TOTAL_STEPS}] Submitting form`, true);
     await sleep(rand(1500, 4000));
     const submitBtn = page
       .locator(
@@ -704,10 +704,10 @@ async function register() {
 
     // Handle captcha
     if (CONFIG.captchaMode === "audio") {
-      console.log("  Auto-solving captcha with audio (offline, free)...");
+      logger.info("  Auto-solving captcha with audio (offline, free)...", true);
 
       // Wait for reCAPTCHA checkbox to load (with retry)
-      console.log("  Waiting for reCAPTCHA to load...");
+      logger.info("  Waiting for reCAPTCHA to load...", true);
       const recaptchaFrame = page.frameLocator("iframe[title*='reCAPTCHA']");
       const recaptchaCheckbox = recaptchaFrame.locator("#recaptcha-anchor");
       let checkboxClicked = false;
@@ -719,11 +719,12 @@ async function register() {
           break;
         } catch (e) {
           if (attempt < 5) {
-            console.log(
+            logger.info(
               `  Checkbox not ready (attempt ${attempt}/5), retrying.`,
+              true,
             );
           } else {
-            console.log("  Checkbox not found after 5 attempts.");
+            logger.info("  Checkbox not found after 5 attempts.", true);
           }
         }
       }
@@ -736,8 +737,9 @@ async function register() {
           .isVisible({ timeout: 2000 })
           .catch(() => false);
         if (verificationCode) {
-          console.log(
+          logger.info(
             "  [INFO] 'Enter verification code' detected — direct to manual solve.",
+            true,
           );
           captchaHandled = true;
         }
@@ -745,61 +747,66 @@ async function register() {
 
       if (captchaHandled) {
         if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-          console.log(
+          logger.info(
             "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+            true,
           );
           process.exitCode = 1;
           return;
         }
-        console.log("  >>> Please solve the captcha manually in the browser.");
-        console.log("  >>> Playing manual-captcha sound alert");
+        logger.info("  >>> Please solve the captcha manually in the browser.", true);
+        logger.info("  >>> Playing manual-captcha sound alert", true);
         await playSound(SOUNDS.manualCaptcha);
         const solved = await waitForCaptchaSolved(
           page,
           CONFIG.captchaSolveTimeout,
         );
-        if (solved) console.log("  Captcha solved! Continuing...");
+        if (solved) logger.info("  Captcha solved! Continuing...", true);
         else
-          console.log(
+          logger.info(
             "  [WARN] Captcha detection timeout, proceeding anyway...",
+            true,
           );
       } else if (!checkboxClicked) {
         if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-          console.log(
+          logger.info(
             "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+            true,
           );
           process.exitCode = 1;
           return;
         }
-        console.log("  [WARN] Could not click reCAPTCHA checkbox.");
-        console.log("  >>> Please solve the captcha manually in the browser.");
-        console.log("  >>> Playing manual-captcha sound alert.");
+        logger.info("  [WARN] Could not click reCAPTCHA checkbox.", true);
+        logger.info("  >>> Please solve the captcha manually in the browser.", true);
+        logger.info("  >>> Playing manual-captcha sound alert.", true);
         await playSound(SOUNDS.manualCaptcha);
         const captchaSolved = await waitForCaptchaSolved(
           page,
           CONFIG.captchaSolveTimeout,
         );
         if (captchaSolved) {
-          console.log("  Captcha solved! Continuing...");
+          logger.info("  Captcha solved! Continuing...", true);
         } else {
-          console.log(
+          logger.info(
             "  [WARN] Captcha detection timeout, proceeding anyway...",
+            true,
           );
         }
       } else {
         try {
           process.env.VERBOSE = "1";
-          console.log("  Solving reCAPTCHA via audio...");
+          logger.info("  Solving reCAPTCHA via audio...", true);
           await solveRecaptchaAudio(page, {
             wait: 5000,
             retry: 5,
             ffmpeg: ffmpegPath,
           });
-          console.log("  reCAPTCHA solved via audio!");
+          logger.info("  reCAPTCHA solved via audio!", true);
 
           // Check for Xiaomi custom 2nd captcha (text/image)
-          console.log(
+          logger.info(
             "  Waiting for next step (custom captcha modal or OTP screen)...",
+            true,
           );
           let captchaVisible = false;
           let otpVisible = false;
@@ -837,45 +844,49 @@ async function register() {
                 '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
               )
               .first();
-            console.log(
+            logger.info(
               "  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving with CapMonster ImageToText...",
+              true,
             );
 
             const solved = await solveImageCaptcha(customImg, page, {
               apiKey: CONFIG.capmonsterApiKey,
             });
             if (solved) {
-              console.log("  Custom captcha solved!");
+              logger.info("  Custom captcha solved!", true);
             } else {
               if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-                console.log(
+                logger.info(
                   "  [SKIP] CapMonster failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+                  true,
                 );
                 process.exitCode = 1;
                 return;
               }
-              console.log("  >>> CapMonster failed — please solve manually.");
-              console.log("  >>> Playing manual-captcha sound alert!");
+              logger.info("  >>> CapMonster failed — please solve manually.", true);
+              logger.info("  >>> Playing manual-captcha sound alert!", true);
               await playSound(SOUNDS.manualCaptcha);
               const manualSolved = await waitForCaptchaSolved(
                 page,
                 CONFIG.captchaSolveTimeout,
               );
               if (!manualSolved) {
-                console.log("  Timeout, closing browser");
+                logger.info("  Timeout, closing browser", true);
                 await browser.close();
                 process.exit(1);
               } else {
-                console.log("  >>> Manual captcha solved, continuing...");
+                logger.info("  >>> Manual captcha solved, continuing...", true);
               }
             }
           } else if (otpVisible) {
-            console.log(
+            logger.info(
               "  Directly advanced to OTP screen, no custom captcha needed.",
+              true,
             );
           } else {
-            console.log(
+            logger.info(
               "  [WARN] Neither custom captcha nor OTP screen detected after 15s.",
+              true,
             );
           }
         } catch (e) {
@@ -893,8 +904,9 @@ async function register() {
               }
             }
             if (isBlocked) {
-              console.log(
+              logger.info(
                 "  >>> Google blocked this IP/network ('automated queries').",
+                true,
               );
               if (CONFIG.proxy) {
                 addToBlacklist(
@@ -903,17 +915,19 @@ async function register() {
                   CONFIG.blacklistDuration,
                 );
               }
-              console.log(
+              logger.info(
                 "  >>> Auto audio solve will NOT work — IP is rate-limited.",
+                true,
               );
-              console.log(
-                "AUTO_SKIP_RATE_LIMIT:",
-                process.env.AUTO_SKIP_RATE_LIMIT,
+              logger.info(
+                `AUTO_SKIP_RATE_LIMIT: ${process.env.AUTO_SKIP_RATE_LIMIT}`,
+                true,
               );
 
               if (process.env.AUTO_SKIP_RATE_LIMIT === "true") {
-                console.log(
+                logger.info(
                   "  >>> AUTO_SKIP_RATE_LIMIT=true — aborting run, loop will skip.",
+                  true,
                 );
                 process.exitCode = 1;
                 return;
@@ -921,65 +935,67 @@ async function register() {
             }
           } catch (_) {}
 
-          console.log(
+          logger.info(
             `  Audio solver failed: ${e.message}. Falling back to manual solve...`,
+            true,
           );
           if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-            console.log(
+            logger.info(
               "  [SKIP] Audio solver failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+              true,
             );
             process.exitCode = 1;
             return;
           }
-          console.log("  >>>Playing manual-captcha sound alert");
+          logger.info("  >>>Playing manual-captcha sound alert", true);
           await playSound(SOUNDS.manualCaptcha);
           await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
         }
       }
     } else if (CONFIG.captchaMode === "2captcha" && CONFIG.captchaApiKey) {
-      console.log("  Auto-solving captcha with 2captcha...");
+      logger.info("  Auto-solving captcha with 2captcha...", true);
       await solveRecaptchaWith2captcha(page, CONFIG.captchaApiKey);
     } else {
       if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
-        console.log(
+        logger.info(
           "  [SKIP] Manual captcha mode but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+          true,
         );
         process.exitCode = 1;
         return;
       }
-      console.log(
+      logger.info(
         "  >>> CAPTCHA: Please solve the captcha manually in the browser.",
+        true,
       );
-      console.log("  >>>Playing manual-captcha sound alert.");
-      await playSound(SOUNDS.manualCaptcha);
-      console.log("  >>> Auto-detecting when solved...");
+      logger.info("  >>>Playing manual-captcha sound alert.", true);
+      logger.info("  >>> Auto-detecting when solved...", true);
       const captchaSolved = await waitForCaptchaSolved(
         page,
         CONFIG.captchaSolveTimeout,
       );
       if (captchaSolved) {
-        console.log("  Captcha solved! Continuing...");
+        logger.info("  Captcha solved! Continuing...", true);
       } else {
-        console.log("  [WARN] Captcha detection timeout, proceeding anyway...");
+        logger.info("  [WARN] Captcha detection timeout, proceeding anyway...", true);
       }
     }
 
     // Step 7: Wait for OTP email
-    console.log(`[7/${TOTAL_STEPS}] Waiting for OTP email...`);
-    logger.info(`[7/${TOTAL_STEPS}] Waiting for OTP email...`);
+    logger.info(`[7/${TOTAL_STEPS}] Waiting for OTP email...`, true);
     const otp = await tempmail.waitForOtp(email, CONFIG.otpTimeout, 3000);
 
     if (!otp) {
-      console.log("  >>> Playing error sound alert");
+      logger.info("  >>> Playing error sound alert", true);
       await playSound(SOUNDS.error);
-      console.log("  TIMEOUT: No OTP received. aborting run, loop will skip.");
+      logger.info("  TIMEOUT: No OTP received. aborting run, loop will skip.", true);
       logger.error("TIMEOUT: No OTP received. aborting run, loop will skip.");
 
       process.exitCode = 1;
       return;
     }
 
-    console.log(`  OTP received: ${otp}`);
+    logger.info(`  OTP received: ${otp}`, true);
 
     // Fill OTP
     const otpInputs = page.locator(
@@ -1009,14 +1025,15 @@ async function register() {
     await otpSubmit.click();
 
     // Step 8: Wait for OAuth redirect chain to platform console
-    console.log(
+    logger.info(
       `[8/${TOTAL_STEPS}] Waiting for OAuth redirect to platform console...`,
+      true,
     );
     logger.info(`[8/${TOTAL_STEPS}] Waiting for OAuth redirect...`);
     await page
       .waitForURL(/platform\.xiaomimimo\.com\/console/, { timeout: 30000 })
       .catch(async () => {
-        console.log("  Redirect not detected, navigating manually...");
+        logger.info("  Redirect not detected, navigating manually...", true);
         await page.goto(CONFIG.consoleUrl, {
           waitUntil: "domcontentloaded",
           timeout: CONFIG.navigateTimeout,
@@ -1024,19 +1041,17 @@ async function register() {
       });
 
     // Step 9: Handle terms & agreements (appears after redirect)
-    console.log(`[9/${TOTAL_STEPS}] Checking terms & agreements...`);
-    logger.info(`[9/${TOTAL_STEPS}] Checking terms & agreements...`);
+    logger.info(`[9/${TOTAL_STEPS}] Checking terms & agreements...`, true);
     await handleTermsAgreement(page);
 
     await handleCookies(page);
     await sleep(2000);
 
     // await page.screenshot({ path: 'registered.png' });
-    console.log("  Landed on platform console");
+    logger.info("  Landed on platform console", true);
 
     // Step 10: Create API Key
-    console.log(`[10/${TOTAL_STEPS}] Creating API Key...`);
-    logger.info(`[10/${TOTAL_STEPS}] Creating API Key...`);
+    logger.info(`[10/${TOTAL_STEPS}] Creating API Key...`, true);
 
     // Try common API key page URLs
     const apiKeyPaths = [
@@ -1067,7 +1082,7 @@ async function register() {
         await el.click();
         await sleep(2000);
         foundApiPage = true;
-        console.log(`  Found nav link via: ${selector}`);
+        logger.info(`  Found nav link via: ${selector}`, true);
         break;
       }
     }
@@ -1084,7 +1099,7 @@ async function register() {
           await handleCookies(page);
           await sleep(1500);
           foundApiPage = true;
-          console.log(`  Navigated to: ${url}`);
+          logger.info(`  Navigated to: ${url}`, true);
           break;
         } catch (_) {}
       }
@@ -1118,9 +1133,9 @@ async function register() {
     if (createBtn) {
       await createBtn.click();
       await sleep(1500);
-      console.log("  Create API Key dialog opened");
+      logger.info("  Create API Key dialog opened", true);
     } else {
-      console.log("  [WARN] Create button not found");
+      logger.info("  [WARN] Create button not found", true);
       // await page.screenshot({ path: 'no_create_btn.png' });
     }
 
@@ -1145,10 +1160,10 @@ async function register() {
     if (nameInput) {
       await nameInput.fill("");
       await nameInput.fill(CONFIG.apiKeyName);
-      console.log(`  API Key name: ${CONFIG.apiKeyName}`);
+      logger.info(`  API Key name: ${CONFIG.apiKeyName}`, true);
       await sleep(500);
     } else {
-      console.log("  [WARN] Name input not found");
+      logger.info("  [WARN] Name input not found", true);
     }
 
     // Confirm via modal button
@@ -1174,13 +1189,12 @@ async function register() {
     if (confirmBtn) {
       await confirmBtn.click();
       await sleep(2000);
-      console.log("  API Key creation confirmed");
+      logger.info("  API Key creation confirmed", true);
     }
     // await page.screenshot({ path: 'api_key_created.png' });
 
     // Step 10: Extract and save the API key
-    console.log(`[11/${TOTAL_STEPS}] Extracting API Key...`);
-    logger.info(`[11/${TOTAL_STEPS}] Extracting API Key...`);
+    logger.info(`[11/${TOTAL_STEPS}] Extracting API Key...`, true);
     let apiKey = "";
 
     // Try to find the API key value on the page
@@ -1226,17 +1240,19 @@ async function register() {
 
     // Validate API key format (sk-*) to prevent clipboard paste bugs
     if (apiKey && !apiKey.startsWith("sk-")) {
-      console.log(
+      logger.info(
         `  [WARN] Key format invalid (not sk-*): "${apiKey.substring(0, 20)}..."`,
+        true,
       );
-      console.log("  [WARN] Creating new API key to replace invalid one...");
+      logger.info("  [WARN] Creating new API key to replace invalid one...", true);
       apiKey = "";
     }
 
     // If key is missing or invalid, retry extraction
     if (!apiKey || apiKey === "-") {
-      console.log(
+      logger.info(
         "  [WARN] Valid API key not found, attempting to create new one...",
+        true,
       );
       // Re-navigate to API key page and create
       for (const p of ["/apikey", "/developer/apikey", "/developer"]) {
@@ -1298,7 +1314,7 @@ async function register() {
         }
       }
       if (!apiKey || !apiKey.startsWith("sk-")) {
-        console.log("  [WARN] Could not get valid sk-* key after retry.");
+        logger.info("  [WARN] Could not get valid sk-* key after retry.", true);
         apiKey = apiKey || "-";
       }
     }
@@ -1322,7 +1338,7 @@ async function register() {
         fs.writeFileSync(csvPath, csvHeaders + "\n", "utf8");
       }
       fs.appendFileSync(csvPath, csvRow + "\n", "utf8");
-      console.log(`  Saved to: ${csvPath}`);
+      logger.info(`  Saved to: ${csvPath}`, true);
 
       saveWorkingProxy(SELECTED_PROXY, SELECTED_COUNTRY);
 
@@ -1348,10 +1364,10 @@ async function register() {
               .catch(() => {});
           }
           await sleep(500);
-          console.log("  API Key modal closed");
+          logger.info("  API Key modal closed", true);
         }
       } catch (e) {
-        console.log(`  [WARN] Failed to close API Key modal: ${e.message}`);
+        logger.info(`  [WARN] Failed to close API Key modal: ${e.message}`, true);
       }
 
       // Step 12: Redeem invite code (if configured)
@@ -1359,8 +1375,7 @@ async function register() {
         process.env.USE_REFERRAL_CODE === "true" &&
         process.env.REFERRAL_CODE
       ) {
-        console.log("[12/12] Redeeming invite code...");
-        logger.info("[12/12] Redeeming invite code...");
+        logger.info("[12/12] Redeeming invite code...", true);
         try {
           const inviteBtn = page
             .locator('button:has-text("Enter invite code")')
@@ -1368,12 +1383,13 @@ async function register() {
           if (
             !(await inviteBtn.isVisible({ timeout: 10000 }).catch(() => false))
           ) {
-            console.log(
+            logger.info(
               "  [INFO] 'Enter invite code' button not visible, skipping.",
+              true,
             );
           } else {
             await inviteBtn.click();
-            console.log("  Invite code modal opened");
+            logger.info("  Invite code modal opened", true);
             await sleep(rand(1500, 3000));
 
             const otpCodeInputs = page.locator(
@@ -1391,7 +1407,7 @@ async function register() {
               await redeemBtn.isVisible({ timeout: 10000 }).catch(() => false)
             ) {
               await redeemBtn.click();
-              console.log(`  Invite code submitted: ${code}`);
+              logger.info(`  Invite code submitted: ${code}`, true);
               await sleep(rand(3000, 5000));
 
               const riskError = await page
@@ -1401,22 +1417,23 @@ async function register() {
                 .catch(() => false);
 
               if (riskError) {
-                console.log(
+                logger.info(
                   "  [WARN] Risk control detected, skipping referral.",
+                  true,
                 );
               } else {
-                console.log("  Invite code redeemed successfully");
+                logger.info("  Invite code redeemed successfully", true);
               }
             } else {
-              console.log("  [WARN] Redeem button not found");
+              logger.info("  [WARN] Redeem button not found", true);
             }
           }
         } catch (e) {
-          console.log(`  Invite code redemption failed: ${e.message}`);
+          logger.info(`  Invite code redemption failed: ${e.message}`, true);
         }
       }
 
-      console.log("  >>> Playing success sound alert");
+      logger.info("  >>> Playing success sound alert", true);
       await playSound(SOUNDS.success);
 
       // Auto extract keys to omniroute.txt
@@ -1426,37 +1443,38 @@ async function register() {
           path.join(ROOT, "keys", "omniroute.txt"),
         );
         if (extractResult.added > 0) {
-          console.log(
+          logger.info(
             `  [extract] ${extractResult.added} new key(s) added to omniroute.txt`,
+            true,
           );
         }
       } catch (e) {
-        console.log(`  [extract] Failed: ${e.message}`);
+        logger.info(`  [extract] Failed: ${e.message}`, true);
       }
     }
 
-    console.log("\n========================================");
-    console.log("  REGISTRATION SUMMARY");
-    console.log("========================================");
-    console.log(`  Email:      ${email}`);
-    console.log(`  Password:   ${CONFIG.password}`);
-    console.log(`  API Key:    ${apiKey || "check api_key_created.png"}`);
-    console.log(`  Saved to:   ${CONFIG.outputFile}`);
+    logger.info("\n========================================", true);
+    logger.info("  REGISTRATION SUMMARY", true);
+    logger.info("========================================", true);
+    logger.info(`  Email:      ${email}`, true);
+    logger.info(`  Password:   ${CONFIG.password}`, true);
+    logger.info(`  API Key:    ${apiKey || "check api_key_created.png"}`, true);
+    logger.info(`  Saved to:   ${CONFIG.outputFile}`, true);
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     const mins = Math.floor(elapsed / 60);
     const secs = elapsed % 60;
-    console.log(`  Runtime:    ${mins}m ${secs}s`);
-    console.log("========================================\n");
-    console.log("Browser will close in 30 seconds...");
+    logger.info(`  Runtime:    ${mins}m ${secs}s`, true);
+    logger.info("========================================\n", true);
+    logger.info("Browser will close in 30 seconds...", true);
     await sleep(5000);
   } catch (err) {
-    console.error("ERROR:", err.message);
+    logger.error(`ERROR: ${err.message}`, true);
     logger.error(`Registration failed: ${err.message}`);
     process.exitCode = 1;
     const proxyErrors =
       /ERR_TIMED_OUT|ERR_CONNECTION_REFUSED|ERR_PROXY|ERR_TUNNEL|ERR_CERT|ECONNREFUSED|ECONNRESET|ETIMEDOUT/;
     if (proxyErrors.test(err.message)) {
-      console.log("  [proxy] Proxy error detected, skipping to next proxy...");
+      logger.info("  [proxy] Proxy error detected, skipping to next proxy...", true);
       logger.warn("Proxy error detected, skipping to next proxy...");
       if (
         process.env.USE_PROXY === "true" &&
@@ -1471,19 +1489,20 @@ async function register() {
               (line) => !line.includes(SELECTED_PROXY),
             );
             fs.writeFileSync(csvPath, filtered.join("\n") + "\n", "utf8");
-            console.log(`  [proxy] Removed ${SELECTED_PROXY} from CSV`);
+            logger.info(`  [proxy] Removed ${SELECTED_PROXY} from CSV`, true);
           }
         } catch (csvErr) {
-          console.log(
+          logger.info(
             `  [proxy] Failed to remove proxy from CSV: ${csvErr.message}`,
+            true,
           );
         }
       }
       await sleep(1000);
     } else {
-      console.log("  >>> Playing error sound alert");
+      logger.info("  >>> Playing error sound alert", true);
       await playSound(SOUNDS.error);
-      console.log("Error screenshot saved: error.png");
+      logger.info("Error screenshot saved: error.png", true);
       await sleep(10000);
     }
   } finally {
@@ -1494,7 +1513,7 @@ async function register() {
 
 // CLI
 if (require.main === module) {
-  register().catch(console.error);
+  register().catch((err) => logger.error(err.message, true));
 }
 
 module.exports = { register, CONFIG };
