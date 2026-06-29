@@ -16,7 +16,7 @@ Multi-platform automated account registration bot using Playwright + temporary e
 - **Temp email** — generate disposable email + auto-extract OTP verification code
 - **Country-aware fingerprint** — locale, timezone, UA, viewport matched to proxy country (26 country profiles)
 - **Anti-bot detection** — stealth plugin, webdriver removal, fake browser properties, WebGL/Canvas/AudioContext fingerprint spoofing
-- **Captcha solving** — auto (reCAPTCHA audio solver + CapMonster ImageToText) with manual fallback
+- **Captcha solving** — auto (reCAPTCHA audio solver + image captcha via local solver or CapMonster) with manual fallback
 - **Proxy management** — CSV-based proxy list, CONNECT + TLS verify, SOCKS4/5 support, auto-rotation, blacklist
 - **API key validation** — sk-\* format check with auto-retry on invalid keys
 - **Auto extract keys** — keys automatically extracted to omniroute.txt after registration
@@ -76,8 +76,9 @@ QODER_URL=https://your-platform-url.com/dashboard/providers/qoder
 QODER_ACCOUNT_PASSWORD=your_account_password
 ALIBABA_PASSWORD=your_alibaba_password
 
-# Captcha (optional)
-CAPMONSTER_API_KEY=your_capmonster_key
+# Captcha
+CAPTCHA_SOLVER_PROVIDER=local    # "local" (default, localhost:5010) or "capmonster"
+CAPMONSTER_API_KEY=              # Required if CAPTCHA_SOLVER_PROVIDER=capmonster
 
 # Proxy
 PROXY=http://user:pass@ip:port          # Single proxy
@@ -178,7 +179,9 @@ Auto-extracts after each registration. Manual run for re-extraction.
 ├── utils/
 │   ├── proxy.js             # Reusable proxy module (fetch, clean, check, recheck, dedup, blacklist)
 │   ├── extract-keys.js      # Reusable extract keys module
-│   ├── capmonster.js        # CapMonster solver (Aliyun + ImageToText)
+│   ├── capmonster.js        # CapMonster Cloud solver (Aliyun + ImageToText)
+│   ├── local-captcha.js     # Local captcha solver (localhost:5010)
+│   ├── captcha-solver.js    # Captcha provider dispatcher (local vs capmonster)
 │   ├── captcha.js           # 2captcha + manual captcha helpers
 │   ├── env.js               # .env loader
 │   ├── ffmpeg.js            # FFmpeg finder
@@ -328,10 +331,11 @@ akun-2|sk-yyyyyyyyyyyyyyyyy
 ## Notes
 
 - **FFmpeg** is required for the reCAPTCHA audio solver (`captchaMode: "audio"`).
-- Xiaomi: captcha can be solved automatically via audio (free, offline) or 2captcha (paid).
+- Xiaomi: captcha solved via reCAPTCHA audio (free, offline) + custom image captcha via local solver (default) or CapMonster.
 - Alibaba: Baxia slider captcha auto-slided; second captcha after OTP waits for manual solve.
 - Alibaba: use residential proxy — datacenter IPs are flagged.
 - Qoder: captcha auto-solved via CapMonster (Aliyun slider), falls back to manual.
+- Local captcha solver runs on `http://127.0.0.1:5010` (POST `/solve` with `{body: base64}`). Set `CAPTCHA_SOLVER_PROVIDER=capmonster` + `CAPMONSTER_API_KEY` to use CapMonster Cloud instead.
 - Proxy CONNECT test verifies TLS handshake through tunnel (same as Playwright behavior).
 - Working proxies auto-saved to `proxies/worked.csv` after successful registration.
 - API keys validated for `sk-*` format before saving to prevent clipboard paste bugs.
