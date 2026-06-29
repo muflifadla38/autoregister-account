@@ -23,7 +23,7 @@ const {
   solveRecaptchaWith2captcha,
   waitForCaptchaSolved,
 } = require("../utils/captcha.js");
-const { solveImageCaptcha } = require("../utils/capmonster.js");
+const { solveImageCaptcha } = require("../utils/captcha-solver.js");
 const {
   loadProxies,
   isBlacklisted,
@@ -845,12 +845,12 @@ async function register() {
               )
               .first();
             logger.info(
-              "  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving with CapMonster ImageToText...",
+              "  >>> XIAOMI CUSTOM CAPTCHA DETECTED — solving...",
               true,
             );
 
             const solved = await solveImageCaptcha(customImg, page, {
-              apiKey: CONFIG.capmonsterApiKey,
+              retries: 10,
             });
             if (solved) {
               logger.info("  Custom captcha solved!", true);

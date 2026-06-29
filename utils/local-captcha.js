@@ -1,0 +1,162 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { sleep } = require('./helpers');
+
+const LOCAL_SOLVER_API = 'http://127.0.0.1:5010';
+
+async function solveCaptcha(imagePath) {
+  const imageBuffer = fs.readFileSync(imagePath);
+  const base64 = imageBuffer.toString('base64');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const res = await fetch(`${LOCAL_SOLVER_API}/solve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: base64 }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      return { status: 'failed', message: `HTTP ${res.status}: ${res.statusText}`, data: null };
+    }
+
+    return await res.json();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      return { status: 'failed', message: 'Request timeout (30s)', data: null };
+    }
+    return { status: 'failed', message: `Connection error: ${e.message}`, data: null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function extractImageBase64(imgLocator) {
+  return await imgLocator.evaluate((img) => {
+    function applyGrayscaleThreshold(canvas) {
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        const v = gray < 128 ? 0 : 255;
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        if (!img.complete || img.naturalWidth === 0) {
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            applyGrayscaleThreshold(canvas);
+            resolve(canvas.toDataURL('image/png').split(',')[1]);
+          };
+          img.onerror = () => reject(new Error('Image load error'));
+        } else {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          applyGrayscaleThreshold(canvas);
+          resolve(canvas.toDataURL('image/png').split(',')[1]);
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+}
+
+async function solveImageCaptcha(imgLocator, page, options) {
+  const {
+    retries = 10,
+    inputSelector = '.mi-captcha-field input, input[name*="icode"]',
+    submitSelector = 'button[type="submit"], button:has-text("Verify"), button:has-text("Confirm")',
+  } = options;
+
+  for (let i = 0; i < retries; i++) {
+    console.log(`  Local captcha solver attempt ${i + 1}/${retries}...`);
+    await sleep(5000);
+
+    const debugPath = path.join(os.tmpdir(), `captcha_${Date.now()}.png`);
+    try {
+      let bodyBase64;
+      try {
+        bodyBase64 = await extractImageBase64(imgLocator);
+      } catch (e) {
+        console.log('  Canvas extraction failed, falling back to screenshot...');
+        const buf = await imgLocator.screenshot();
+        bodyBase64 = buf.toString('base64');
+      }
+
+      fs.writeFileSync(debugPath, Buffer.from(bodyBase64, 'base64'));
+
+      const result = await solveCaptcha(debugPath);
+      if (result.status !== 'success' || !result.data) {
+        console.log(`  Local solver failed: ${result.message}`);
+        continue;
+      }
+
+      const answer = String(result.data).trim();
+      console.log(`  Captcha answer: "${answer}"`);
+
+      const input = page.locator(inputSelector).first();
+      if (!(await input.isVisible({ timeout: 3000 }).catch(() => false))) {
+        console.log('  [WARN] Input field not visible, skipping...');
+        continue;
+      }
+
+      await input.click();
+      await input.fill('');
+      await input.type(answer, { delay: 50 });
+
+      let submitClicked = false;
+      const selectors = submitSelector.split(',').map(s => s.trim());
+      for (const sel of selectors) {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+          const disabled = await btn.getAttribute('disabled').catch(() => null);
+          if (disabled !== null && disabled !== false) {
+            console.log(`  Submit button ${sel} is disabled, trying next...`);
+            continue;
+          }
+          await btn.click();
+          submitClicked = true;
+          break;
+        }
+      }
+
+      if (!submitClicked) {
+        console.log('  No enabled submit button found, pressing Enter on input...');
+        await input.press('Enter');
+        submitClicked = true;
+      }
+
+      if (submitClicked) {
+        await sleep(2000);
+        if (!(await imgLocator.isVisible({ timeout: 1000 }).catch(() => false))) {
+          return true;
+        }
+        console.log('  Wrong answer, retrying...');
+      }
+    } catch (e) {
+      console.log(`  Local captcha solver error: ${e.message}`);
+    } finally {
+      try { fs.unlinkSync(debugPath); } catch (_) {}
+    }
+  }
+  return false;
+}
+
+module.exports = { solveCaptcha, solveImageCaptcha };

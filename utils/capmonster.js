@@ -1,48 +1,48 @@
 // CapMonster Cloud solver for Alibaba / Aliyun Captcha (token-based).
 // Docs: https://capmonster.cloud (Alibaba Captcha task type).
 //
-// Unlike the old OpenCV solver (which physically dragged the slider),
-// CapMonster returns a TOKEN that must be injected back into the AliyunCaptcha
-// widget. Token injection is handled here; see INJECT_STRATEGIES below.
+// For local captcha solver (localhost:5010), see local-captcha.js.
+// Use captcha-solver.js as dispatcher based on CAPTCHA_SOLVER_PROVIDER.
 
 const { sleep } = require('./helpers');
 
 const CAPMONSTER_API = 'https://api.capmonster.cloud';
 
-// ─── createTask: submit an Alibaba captcha task to CapMonster ────────────
+// ─── createTask: submit an Alibaba captcha task ──────────────────────
 async function createTask(apiKey, task) {
+  const body = { task, clientKey: apiKey };
   const res = await fetch(`${CAPMONSTER_API}/createTask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clientKey: apiKey, task }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   if (data.errorId !== 0) {
-    throw new Error(`CapMonster createTask error: ${data.errorDescription || data.errorCode || JSON.stringify(data)}`);
+    throw new Error(`createTask error: ${data.errorDescription || data.errorCode || JSON.stringify(data)}`);
   }
   return data.taskId;
 }
 
 // ─── getTaskResult: poll until the captcha is solved ─────────────────────
-async function getTaskResult(apiKey, taskId, { timeoutMs = 180000, pollMs = 5000 } = {}) {
+async function getTaskResult(apiKey, taskId, { timeoutMs = 180000, pollMs = 2000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await sleep(pollMs);
+    const body = { taskId, clientKey: apiKey };
     const res = await fetch(`${CAPMONSTER_API}/getTaskResult`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientKey: apiKey, taskId }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (data.errorId !== 0) {
-      throw new Error(`CapMonster getTaskResult error: ${data.errorDescription || data.errorCode || JSON.stringify(data)}`);
+      throw new Error(`getTaskResult error: ${data.errorDescription || data.errorCode || JSON.stringify(data)}`);
     }
     if (data.status === 'ready') {
       return data.solution;
     }
-    console.log(`  CapMonster: status="${data.status}", waiting ${pollMs / 1000}s...`);
   }
-  throw new Error('CapMonster: timed out waiting for solution');
+  throw new Error('Timed out waiting for solution');
 }
 
 // ─── extractCaptchaConfig: find sceneId + prefix from the live page ──────
@@ -376,7 +376,7 @@ async function solveAliyunCaptcha(page, options) {
 async function solveImageCaptcha(imgLocator, page, options) {
   const {
     apiKey,
-    retries = 1,
+    retries = 10,
     timeoutMs = 180000,
     inputSelector = '.mi-captcha-field input, input[name*="icode"]',
     submitSelector = 'button[type="submit"], button:has-text("Verify"), button:has-text("Confirm")',
@@ -393,7 +393,7 @@ async function solveImageCaptcha(imgLocator, page, options) {
 
   for (let i = 0; i < retries; i++) {
     console.log(`  CapMonster ImageToText attempt ${i + 1}/${retries}...`);
-    await sleep(1000);
+    await sleep(5000);
 
     const debugPath = path.join(os.tmpdir(), `captcha_${Date.now()}.png`);
     try {

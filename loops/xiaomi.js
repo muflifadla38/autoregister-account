@@ -41,6 +41,21 @@ let currentStep = "";
 let runStartTime = 0;
 let runStatus = "IDLE";
 let lastError = "";
+let paused = false;
+
+function suspendTree(pid) {
+  try {
+    const ps = `Get-CimInstance Win32_Process | Where-Object {$_.ParentProcessId -eq ${pid}} | ForEach-Object { Suspend-Process -Id $_.ProcessId 2>$null }; Suspend-Process -Id ${pid} 2>$null`;
+    require("child_process").execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: "ignore" });
+  } catch (_) {}
+}
+
+function resumeTree(pid) {
+  try {
+    const ps = `Get-CimInstance Win32_Process | Where-Object {$_.ParentProcessId -eq ${pid}} | ForEach-Object { Resume-Process -Id $_.ProcessId 2>$null }; Resume-Process -Id ${pid} 2>$null`;
+    require("child_process").execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: "ignore" });
+  } catch (_) {}
+}
 
 // ─── PROXY ──────────────────────────────────────────
 
@@ -73,7 +88,8 @@ function renderHeadlessStatus() {
   const rows = process.stdout.rows || 40;
   const elapsed = formatDuration(Date.now() - loopStartTime);
   const runElapsed = runStartTime ? formatDuration(Date.now() - runStartTime) : "0m 0s";
-  const statusColor = runStatus === "RUNNING" ? "\x1b[33m" : runStatus === "SUCCESS" ? "\x1b[32m" : "\x1b[31m";
+  const statusColor = paused ? "\x1b[35m" : runStatus === "RUNNING" ? "\x1b[33m" : runStatus === "SUCCESS" ? "\x1b[32m" : "\x1b[31m";
+  const displayStatus = paused ? "PAUSED" : runStatus;
 
   const row1 = rows - 2;
   const row2 = rows - 1;
@@ -83,7 +99,7 @@ function renderHeadlessStatus() {
     `\x1b[${row1};1H\x1b[2K` +
     `\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m` +
     `\x1b[${row2};1H\x1b[2K` +
-    `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${runStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}` +
+    `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${displayStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}` +
     `\x1b[${row3};1H\x1b[2K` +
     (lastError ? `\x1b[31m  ${lastError}\x1b[0m` : "") +
     `\x1b[4;1H`  // move cursor back to scroll area
@@ -175,6 +191,18 @@ function onKey(chunk) {
     if (running && currentChild) logger.info("[loop] Step skip requested.", true);
     return;
   }
+  // Pause / Resume
+  if (s === "p" || s === "P") {
+    paused = !paused;
+    if (paused) {
+      logger.info("[loop] PAUSED — process frozen.", true);
+      if (running && currentChild) suspendTree(currentChild.pid);
+    } else {
+      logger.info("[loop] RESUMED.", true);
+      if (running && currentChild) resumeTree(currentChild.pid);
+    }
+    return;
+  }
   if (s === "r" || s === "R") {
     if (currentProxy) {
       const idx = available.findIndex((item) => item.proxy === currentProxy);
@@ -260,7 +288,7 @@ function run() {
 
   if (!HEADLESS) {
     logger.info(`\n=== RUN #${count} (${proxyLabel}) ===`, true);
-    logger.info("[loop] 's' skip · 'd' skip step · 'r' remove · 'b' ban · 'm' move last · 'q' quit", true);
+    logger.info("[loop] 's' skip · 'd' step · 'r' remove · 'b' ban · 'm' move · 'p' pause · 'q' quit", true);
   }
   logger.info(`RUN #${count} started — ${proxyLabel}`);
 
