@@ -161,7 +161,7 @@ const FREE_PROXIES = process.env.PROXIES
   : loadProxies(path.join(ROOT, "proxies", "rechecked.csv"));
 
 cleanExpiredBlacklist();
-  logger.info(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`, true);
+logger.info(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`, true);
 
 const COUNTRY_PROFILES = {
   US: {
@@ -333,7 +333,10 @@ let SELECTED_COUNTRY = "";
 async function getNextProxy() {
   if (CONFIG.proxy) {
     if (isBlacklisted(CONFIG.proxy)) {
-      logger.info(`  [blacklist] Configured proxy is blacklisted, skipping.`, true);
+      logger.info(
+        `  [blacklist] Configured proxy is blacklisted, skipping.`,
+        true,
+      );
       return "";
     }
     SELECTED_PROXY = CONFIG.proxy;
@@ -754,7 +757,10 @@ async function register() {
           process.exitCode = 1;
           return;
         }
-        logger.info("  >>> Please solve the captcha manually in the browser.", true);
+        logger.info(
+          "  >>> Please solve the captcha manually in the browser.",
+          true,
+        );
         logger.info("  >>> Playing manual-captcha sound alert", true);
         await playSound(SOUNDS.manualCaptcha);
         const solved = await waitForCaptchaSolved(
@@ -777,7 +783,10 @@ async function register() {
           return;
         }
         logger.info("  [WARN] Could not click reCAPTCHA checkbox.", true);
-        logger.info("  >>> Please solve the captcha manually in the browser.", true);
+        logger.info(
+          "  >>> Please solve the captcha manually in the browser.",
+          true,
+        );
         logger.info("  >>> Playing manual-captcha sound alert.", true);
         await playSound(SOUNDS.manualCaptcha);
         const captchaSolved = await waitForCaptchaSolved(
@@ -850,20 +859,23 @@ async function register() {
             );
 
             const solved = await solveImageCaptcha(customImg, page, {
-              retries: 10,
+              retries: 20,
             });
             if (solved) {
               logger.info("  Custom captcha solved!", true);
             } else {
               if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
                 logger.info(
-                  "  [SKIP] CapMonster failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+                  "  [SKIP] Captcha Solver failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
                   true,
                 );
                 process.exitCode = 1;
                 return;
               }
-              logger.info("  >>> CapMonster failed — please solve manually.", true);
+              logger.info(
+                "  >>> Captcha Solver failed — please solve manually.",
+                true,
+              );
               logger.info("  >>> Playing manual-captcha sound alert!", true);
               await playSound(SOUNDS.manualCaptcha);
               const manualSolved = await waitForCaptchaSolved(
@@ -977,7 +989,10 @@ async function register() {
       if (captchaSolved) {
         logger.info("  Captcha solved! Continuing...", true);
       } else {
-        logger.info("  [WARN] Captcha detection timeout, proceeding anyway...", true);
+        logger.info(
+          "  [WARN] Captcha detection timeout, proceeding anyway...",
+          true,
+        );
       }
     }
 
@@ -988,7 +1003,10 @@ async function register() {
     if (!otp) {
       logger.info("  >>> Playing error sound alert", true);
       await playSound(SOUNDS.error);
-      logger.info("  TIMEOUT: No OTP received. aborting run, loop will skip.", true);
+      logger.info(
+        "  TIMEOUT: No OTP received. aborting run, loop will skip.",
+        true,
+      );
       logger.error("TIMEOUT: No OTP received. aborting run, loop will skip.");
 
       process.exitCode = 1;
@@ -1244,7 +1262,10 @@ async function register() {
         `  [WARN] Key format invalid (not sk-*): "${apiKey.substring(0, 20)}..."`,
         true,
       );
-      logger.info("  [WARN] Creating new API key to replace invalid one...", true);
+      logger.info(
+        "  [WARN] Creating new API key to replace invalid one...",
+        true,
+      );
       apiKey = "";
     }
 
@@ -1367,7 +1388,10 @@ async function register() {
           logger.info("  API Key modal closed", true);
         }
       } catch (e) {
-        logger.info(`  [WARN] Failed to close API Key modal: ${e.message}`, true);
+        logger.info(
+          `  [WARN] Failed to close API Key modal: ${e.message}`,
+          true,
+        );
       }
 
       // Step 12: Redeem invite code (if configured)
@@ -1474,7 +1498,10 @@ async function register() {
     const proxyErrors =
       /ERR_TIMED_OUT|ERR_CONNECTION_REFUSED|ERR_PROXY|ERR_TUNNEL|ERR_CERT|ECONNREFUSED|ECONNRESET|ETIMEDOUT/;
     if (proxyErrors.test(err.message)) {
-      logger.info("  [proxy] Proxy error detected, skipping to next proxy...", true);
+      logger.info(
+        "  [proxy] Proxy error detected, skipping to next proxy...",
+        true,
+      );
       logger.warn("Proxy error detected, skipping to next proxy...");
       if (
         process.env.USE_PROXY === "true" &&
