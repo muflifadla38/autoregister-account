@@ -150,7 +150,6 @@ async function solveImageCaptcha(imgLocator, page, options) {
         if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
           const disabled = await btn.getAttribute("disabled").catch(() => null);
           if (disabled !== null && disabled !== false) {
-            console.log(`  Submit button ${sel} is disabled, trying next...`);
             continue;
           }
           await btn.click();

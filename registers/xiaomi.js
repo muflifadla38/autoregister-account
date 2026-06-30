@@ -784,6 +784,12 @@ async function register() {
             CONFIG.captchaSolveTimeout,
           );
         } else {
+          const customImg = page
+            .locator(
+              '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
+            )
+            .first();
+
           const solved = await solveImageCaptcha(customImg, page, {
             retries: 10,
           });
@@ -887,6 +893,17 @@ async function register() {
 
               if (solved) {
                 logger.info("  Custom captcha solved!", true);
+              } else if (
+                !HEADLESS &&
+                process.env.AUTO_SKIP_MANUAL_CAPTCHA !== "true"
+              ) {
+                logger.info(
+                  "  Local solver failed. Waiting for manual captcha solving...",
+                  true,
+                );
+                logger.info("  >>>Playing manual-captcha sound alert", true);
+                await playSound(SOUNDS.manualCaptcha);
+                await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
               } else {
                 logger.info(
                   "  [SKIP] Captcha Solver failed, aborting...",
