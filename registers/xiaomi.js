@@ -529,6 +529,7 @@ function playSound(filePath) {
 // still loads, so this is a false-positive error we must ignore.
 async function gotoTolerant(page, url, opts = {}) {
   const {
+    proxy = null,
     waitUntil = "domcontentloaded",
     timeout = 600000,
     settleAfter = 1500,
@@ -541,6 +542,14 @@ async function gotoTolerant(page, url, opts = {}) {
     } catch (e) {
       const aborted = /ERR_ABORTED/.test(e?.message || "");
       if (!aborted) throw e;
+
+      if (aborted && retries >= 3 && attempt == retries) {
+        removeProxyFromCsv(proxy);
+        throw new Error(
+          `Navigation aborted (ERR_ABORTED) after ${retries} attempts, proxy ${proxy} removed from CSV.`,
+        );
+      }
+
       logger.info(
         `  [nav] redirect aborted (ERR_ABORTED), waiting to settle... (attempt ${attempt}/${retries})`,
         true,
@@ -571,6 +580,29 @@ async function isRequiredManualCaptcha(page) {
   }
 
   return false;
+}
+
+function removeProxyFromCsv(proxy) {
+  if (
+    process.env.USE_PROXY === "true" &&
+    process.env.USE_PROXY_CSV === "true" &&
+    proxy
+  ) {
+    try {
+      const csvPath = path.join(ROOT, "proxies", "rechecked.csv");
+      if (fs.existsSync(csvPath)) {
+        const lines = fs.readFileSync(csvPath, "utf8").trim().split("\n");
+        const filtered = lines.filter((line) => !line.includes(proxy));
+        fs.writeFileSync(csvPath, filtered.join("\n") + "\n", "utf8");
+        logger.info(`  [proxy] Removed ${proxy} from CSV`, true);
+      }
+    } catch (csvErr) {
+      logger.info(
+        `  [proxy] Failed to remove proxy from CSV: ${csvErr.message}`,
+        true,
+      );
+    }
+  }
 }
 
 async function register() {
@@ -648,12 +680,15 @@ async function register() {
     // Step 2: Navigate to landing page → click Sign Up → redirect to registration
     logger.info(`[3/${TOTAL_STEPS}] Opening landing page...`, true);
     logger.info(`  Landing URL: ${CONFIG.landingUrl}`, true);
-    await gotoTolerant(page, CONFIG.landingUrl);
+    await gotoTolerant(page, CONFIG.landingUrl, { proxy: CONFIG.proxy });
     logger.info("  Waiting for cookie...", true);
     await handleCookies(page);
     await sleep(rand(2000, 3000));
     logger.info(`  Register URL: ${CONFIG.registerUrl}`, true);
-    await gotoTolerant(page, CONFIG.registerUrl, { retries: 3 });
+    await gotoTolerant(page, CONFIG.registerUrl, {
+      proxy: CONFIG.proxy,
+      retries: 3,
+    });
 
     // Wait for Xiaomi registration page to load
     await page
@@ -1533,29 +1568,8 @@ async function register() {
         "  [proxy] Proxy error detected, skipping to next proxy...",
         true,
       );
-      logger.warn("Proxy error detected, skipping to next proxy...");
-      if (
-        process.env.USE_PROXY === "true" &&
-        process.env.USE_PROXY_CSV === "true" &&
-        SELECTED_PROXY
-      ) {
-        try {
-          const csvPath = path.join(ROOT, "proxies", "rechecked.csv");
-          if (fs.existsSync(csvPath)) {
-            const lines = fs.readFileSync(csvPath, "utf8").trim().split("\n");
-            const filtered = lines.filter(
-              (line) => !line.includes(SELECTED_PROXY),
-            );
-            fs.writeFileSync(csvPath, filtered.join("\n") + "\n", "utf8");
-            logger.info(`  [proxy] Removed ${SELECTED_PROXY} from CSV`, true);
-          }
-        } catch (csvErr) {
-          logger.info(
-            `  [proxy] Failed to remove proxy from CSV: ${csvErr.message}`,
-            true,
-          );
-        }
-      }
+
+      removeProxyFromCsv(SELECTED_PROXY);
       await sleep(1000);
     } else {
       logger.info("  >>> Playing error sound alert", true);
