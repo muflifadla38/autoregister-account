@@ -366,8 +366,8 @@ const getRandomProxy = getNextProxy;
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
 
 async function handleTermsAgreement(page) {
-  // Poll for terms page to fully load (max 60s)
-  const deadline = Date.now() + 15000;
+  // Poll for terms page to fully load (max 6m)
+  const deadline = Date.now() + 360000;
   let hasTerms = false;
 
   while (Date.now() < deadline) {
@@ -389,7 +389,6 @@ async function handleTermsAgreement(page) {
 
   if (!hasTerms) {
     logger.info("  No terms agreement detected, looping...", true);
-    return await handleTermsAgreement(page);
   }
 
   logger.info("  Terms agreement detected!", true);
@@ -780,10 +779,7 @@ async function register() {
           );
           logger.info("  >>> Playing manual-captcha sound alert", true);
           await playSound(SOUNDS.manualCaptcha);
-          solved = await waitForCaptchaSolved(
-            page,
-            CONFIG.captchaSolveTimeout,
-          );
+          solved = await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
         } else {
           const customImg = page
             .locator(
