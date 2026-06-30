@@ -35,6 +35,7 @@ const { logger } = require("../utils/logger.js");
 
 const ffmpegPath = findFfmpeg();
 const HEADLESS = process.env.HEADLESS === "true";
+const CAPTCHA_SOLVER_PROVIDER = process.env.CAPTCHA_SOLVER_PROVIDER || "manual";
 
 let skipStep = false;
 let keypressEnabled = false;
@@ -749,9 +750,9 @@ async function register() {
       }
 
       if (captchaHandled) {
-        if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+        if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true") {
           logger.info(
-            "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+            "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA enabled, aborting...",
             true,
           );
           process.exitCode = 1;
@@ -774,9 +775,9 @@ async function register() {
             true,
           );
       } else if (!checkboxClicked) {
-        if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+        if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true") {
           logger.info(
-            "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+            "  [SKIP] Manual captcha required but AUTO_SKIP_MANUAL_CAPTCHA enabled, aborting...",
             true,
           );
           process.exitCode = 1;
@@ -858,30 +859,28 @@ async function register() {
               true,
             );
 
-            const solved = await solveImageCaptcha(customImg, page, {
-              retries: 10,
-            });
-            if (solved) {
-              logger.info("  Custom captcha solved!", true);
-            } else {
-              if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+            if (CAPTCHA_SOLVER_PROVIDER !== "manual") {
+              const solved = await solveImageCaptcha(customImg, page, {
+                retries: 10,
+              });
+              if (solved) {
+                logger.info("  Custom captcha solved!", true);
+              } else {
                 logger.info(
-                  "  [SKIP] Captcha Solver failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+                  "  [SKIP] Captcha Solver failed, aborting...",
                   true,
                 );
                 process.exitCode = 1;
                 return;
               }
-              logger.info(
-                "  >>> Captcha Solver failed — please solve manually.",
-                true,
-              );
+            } else {
               logger.info("  >>> Playing manual-captcha sound alert!", true);
               await playSound(SOUNDS.manualCaptcha);
               const manualSolved = await waitForCaptchaSolved(
                 page,
                 CONFIG.captchaSolveTimeout,
               );
+
               if (!manualSolved) {
                 logger.info("  Timeout, closing browser", true);
                 await browser.close();
@@ -951,9 +950,9 @@ async function register() {
             `  Audio solver failed: ${e.message}. Falling back to manual solve...`,
             true,
           );
-          if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+          if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true") {
             logger.info(
-              "  [SKIP] Audio solver failed and AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+              "  [SKIP] Audio solver failed and AUTO_SKIP_MANUAL_CAPTCHA enabled, aborting...",
               true,
             );
             process.exitCode = 1;
@@ -968,9 +967,9 @@ async function register() {
       logger.info("  Auto-solving captcha with 2captcha...", true);
       await solveRecaptchaWith2captcha(page, CONFIG.captchaApiKey);
     } else {
-      if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true" || HEADLESS) {
+      if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true") {
         logger.info(
-          "  [SKIP] Manual captcha mode but AUTO_SKIP_MANUAL_CAPTCHA/HEADLESS enabled, aborting...",
+          "  [SKIP] Manual captcha mode but AUTO_SKIP_MANUAL_CAPTCHA enabled, aborting...",
           true,
         );
         process.exitCode = 1;

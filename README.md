@@ -77,7 +77,7 @@ QODER_ACCOUNT_PASSWORD=your_account_password
 ALIBABA_PASSWORD=your_alibaba_password
 
 # Captcha
-CAPTCHA_SOLVER_PROVIDER=local    # "local" (default, localhost:5010) or "capmonster"
+CAPTCHA_SOLVER_PROVIDER=manual    # manual (default), local (localhost:5010) atau capmonster
 CAPMONSTER_API_KEY=              # Required if CAPTCHA_SOLVER_PROVIDER=capmonster
 
 # Proxy
@@ -133,10 +133,10 @@ npm run proxies                           # Both: check + recheck
 
 **Providers:**
 
-| Provider | Source | Default |
-| ---------- | ------ | ------- |
-| `hproxy` | hproxy.com API | Yes |
-| `proxyscrape` | ProxyScrape GitHub | No |
+| Provider      | Source             | Default |
+| ------------- | ------------------ | ------- |
+| `hproxy`      | hproxy.com API     | Yes     |
+| `proxyscrape` | ProxyScrape GitHub | No      |
 
 ```bash
 node check-proxies.js --provider proxyscrape
