@@ -930,10 +930,6 @@ async function register() {
                 "  >>> Auto audio solve will NOT work — IP is rate-limited.",
                 true,
               );
-              logger.info(
-                `AUTO_SKIP_RATE_LIMIT: ${process.env.AUTO_SKIP_RATE_LIMIT}`,
-                true,
-              );
 
               if (process.env.AUTO_SKIP_RATE_LIMIT === "true") {
                 logger.info(
