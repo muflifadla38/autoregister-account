@@ -159,6 +159,14 @@ npm run extract-keys
 
 Auto-extracts after each registration. Manual run for re-extraction.
 
+### Clean Logs
+
+```bash
+npm run clean:logs
+```
+
+Delete all `.log` files in `logs/`.
+
 ## Project Structure
 
 ```
@@ -335,7 +343,7 @@ akun-2|sk-yyyyyyyyyyyyyyyyy
 - Alibaba: Baxia slider captcha auto-slided; second captcha after OTP waits for manual solve.
 - Alibaba: use residential proxy — datacenter IPs are flagged.
 - Qoder: captcha auto-solved via CapMonster (Aliyun slider), falls back to manual.
-- Local captcha solver runs on `http://127.0.0.1:5010` (POST `/solve` with `{body: base64}`). Set `CAPTCHA_SOLVER_PROVIDER=capmonster` + `CAPMONSTER_API_KEY` to use CapMonster Cloud instead.
+- Local captcha solver runs on `http://127.0.0.1:5010` (POST `/api/solve` with `{image_base64: base64}`). Set `CAPTCHA_SOLVER_PROVIDER=capmonster` + `CAPMONSTER_API_KEY` to use CapMonster Cloud instead. See [captchasolver README](https://github.com/nicnl31/captchasolver) for full API docs.
 - Proxy CONNECT test verifies TLS handshake through tunnel (same as Playwright behavior).
 - Working proxies auto-saved to `proxies/worked.csv` after successful registration.
 - API keys validated for `sk-*` format before saving to prevent clipboard paste bugs.

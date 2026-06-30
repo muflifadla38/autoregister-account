@@ -17,7 +17,8 @@
     "auto-xiaomi": "node check-proxies.js && node recheck-proxies.js && node loop.js xiaomi",
     "auto-xiaomi-ps": "node check-proxies.js --provider proxyscrape && node recheck-proxies.js && node loop.js xiaomi",
     "extract-keys": "node extract-keys.js",
-    "playwright:install": "npx playwright install chromium"
+    "playwright:install": "npx playwright install chromium",
+    "clean:logs": "del /Q logs\\*.log 2>nul || rm -f logs/*.log"
   },
   "keywords": [
     "automation",
