@@ -772,6 +772,7 @@ async function register() {
           return;
         }
 
+        let solved = false;
         if (CAPTCHA_SOLVER_PROVIDER === "manual") {
           logger.info(
             "  >>> Please solve the captcha manually in the browser.",
@@ -779,7 +780,7 @@ async function register() {
           );
           logger.info("  >>> Playing manual-captcha sound alert", true);
           await playSound(SOUNDS.manualCaptcha);
-          const solved = await waitForCaptchaSolved(
+          solved = await waitForCaptchaSolved(
             page,
             CONFIG.captchaSolveTimeout,
           );
@@ -790,7 +791,7 @@ async function register() {
             )
             .first();
 
-          const solved = await solveImageCaptcha(customImg, page, {
+          solved = await solveImageCaptcha(customImg, page, {
             retries: 10,
           });
         }
