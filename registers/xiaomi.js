@@ -95,7 +95,7 @@ const CONFIG = {
   otpTimeout: 600000,
   navigateTimeout: 600000,
   // Reusable timeout for manual captcha solving (waitForCaptchaSolved)
-  captchaSolveTimeout: 600000, // 10 min
+  captchaSolveTimeout: 5000, // 5s
   // Captcha mode: 'manual' | 'audio' | '2captcha'
   captchaMode: "audio",
   captchaApiKey: "",
@@ -1017,6 +1017,28 @@ async function register() {
             `  Audio solver failed: ${e.message}. Falling back to manual solve...`,
             true,
           );
+
+          if (CAPTCHA_SOLVER_PROVIDER !== "manual") {
+            const requiredManualCaptcha = await isRequiredManualCaptcha(page);
+            if (!requiredManualCaptcha) {
+              logger.info(
+                `  [SKIP] Audio solver failed and CAPTCHA_SOLVER_PROVIDER = ${CAPTCHA_SOLVER_PROVIDER}, aborting...`,
+                true,
+              );
+              process.exitCode = 1;
+              return;
+            }
+
+            const customImg = page
+              .locator(
+                '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
+              )
+              .first();
+            const solve = await solveImageCaptcha(customImg, page, {
+              retries: 10,
+            });
+          }
+
           if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true") {
             logger.info(
               "  [SKIP] Audio solver failed and AUTO_SKIP_MANUAL_CAPTCHA enabled, aborting...",
@@ -1025,6 +1047,7 @@ async function register() {
             process.exitCode = 1;
             return;
           }
+
           logger.info("  >>>Playing manual-captcha sound alert", true);
           await playSound(SOUNDS.manualCaptcha);
           await waitForCaptchaSolved(page, CONFIG.captchaSolveTimeout);
