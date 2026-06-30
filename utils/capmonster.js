@@ -379,7 +379,7 @@ async function solveImageCaptcha(imgLocator, page, options) {
     retries = 10,
     timeoutMs = 180000,
     inputSelector = '.mi-captcha-field input, input[name*="icode"]',
-    submitSelector = 'button[type="submit"], button:has-text("Verify"), button:has-text("Confirm")',
+    submitSelector = 'button[type="submit"], button:has-text("Submit"), button:has-text("Verify"), button:has-text("Confirm")',
   } = options;
 
   if (!apiKey) {

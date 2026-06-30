@@ -554,6 +554,26 @@ async function gotoTolerant(page, url, opts = {}) {
   }
 }
 
+async function isRequiredManualCaptcha(page) {
+  const verificationCode = await page
+    .locator("text=/Enter verification code/i")
+    .first()
+    .isVisible({ timeout: 2000 })
+    .catch(() => false);
+
+  if (verificationCode) {
+    let solverType = process.env.CAPTCHA_SOLVER_PROVIDER || "manual";
+    logger.info(
+      `  [INFO] Manual Captcha detected — direct to ${solverType} solve.`,
+      true,
+    );
+
+    return true;
+  }
+
+  return false;
+}
+
 async function register() {
   const startTime = Date.now();
   const TOTAL_STEPS = process.env.USE_REFERRAL_CODE === "true" ? 12 : 11;
@@ -716,10 +736,19 @@ async function register() {
       const recaptchaCheckbox = recaptchaFrame.locator("#recaptcha-anchor");
       let checkboxClicked = false;
       let captchaHandled = false;
+      let requiredManualCaptcha = false;
+
       for (let attempt = 1; attempt <= 5; attempt++) {
         try {
-          await recaptchaCheckbox.click({ timeout: 5000 });
+          requiredManualCaptcha = await isRequiredManualCaptcha(page);
+          if (!requiredManualCaptcha) {
+            await recaptchaCheckbox.click({ timeout: 5000 });
+          } else {
+            captchaHandled = true;
+          }
+
           checkboxClicked = true;
+
           break;
         } catch (e) {
           if (attempt < 5) {
@@ -733,22 +762,6 @@ async function register() {
         }
       }
 
-      // If checkbox not clicked, check for special states before falling back
-      if (!checkboxClicked) {
-        const verificationCode = await page
-          .locator("text=/Enter verification code/i")
-          .first()
-          .isVisible({ timeout: 2000 })
-          .catch(() => false);
-        if (verificationCode) {
-          logger.info(
-            "  [INFO] 'Enter verification code' detected — direct to manual solve.",
-            true,
-          );
-          captchaHandled = true;
-        }
-      }
-
       if (captchaHandled) {
         if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true") {
           logger.info(
@@ -758,20 +771,28 @@ async function register() {
           process.exitCode = 1;
           return;
         }
-        logger.info(
-          "  >>> Please solve the captcha manually in the browser.",
-          true,
-        );
-        logger.info("  >>> Playing manual-captcha sound alert", true);
-        await playSound(SOUNDS.manualCaptcha);
-        const solved = await waitForCaptchaSolved(
-          page,
-          CONFIG.captchaSolveTimeout,
-        );
+
+        if (CAPTCHA_SOLVER_PROVIDER === "manual") {
+          logger.info(
+            "  >>> Please solve the captcha manually in the browser.",
+            true,
+          );
+          logger.info("  >>> Playing manual-captcha sound alert", true);
+          await playSound(SOUNDS.manualCaptcha);
+          const solved = await waitForCaptchaSolved(
+            page,
+            CONFIG.captchaSolveTimeout,
+          );
+        } else {
+          const solved = await solveImageCaptcha(customImg, page, {
+            retries: 10,
+          });
+        }
+
         if (solved) logger.info("  Captcha solved! Continuing...", true);
         else
           logger.info(
-            "  [WARN] Captcha detection timeout, proceeding anyway...",
+            "  [WARN] Captcha solver timeout, proceeding anyway...",
             true,
           );
       } else if (!checkboxClicked) {
@@ -863,6 +884,7 @@ async function register() {
               const solved = await solveImageCaptcha(customImg, page, {
                 retries: 10,
               });
+
               if (solved) {
                 logger.info("  Custom captcha solved!", true);
               } else {
