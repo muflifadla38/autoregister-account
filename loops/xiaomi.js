@@ -30,6 +30,8 @@ logger.info(`Loaded ${PROXIES.length} proxies (${available.length} available, ${
 let count = 0;
 let success = 0;
 let failed = 0;
+let googleBlockedCount = 0;
+let currentRunBlocked = false;
 let currentChild = null;
 let running = false;
 let stopping = false;
@@ -268,6 +270,9 @@ function parseChildLine(line) {
     lastError = line.trim().substring(0, 80);
     runStatus = "FAILED";
   }
+  if (line.includes("Google blocked this IP/network")) {
+    currentRunBlocked = true;
+  }
 }
 
 // ─── RUN ────────────────────────────────────────────
@@ -298,6 +303,7 @@ function run() {
   currentProxy = proxy;
   currentCountry = country;
   currentStep = "";
+  currentRunBlocked = false;
   runStatus = "RUNNING";
   runStartTime = Date.now();
   lastError = "";
@@ -344,9 +350,23 @@ function run() {
     });
   } else {
     currentChild = spawn("node", ["register.js", "xiaomi"], {
-      stdio: "inherit",
+      stdio: ["ignore", "pipe", "pipe"],
       cwd: ROOT,
       env,
+    });
+    let bufNl = "";
+    currentChild.stdout.on("data", (data) => {
+      process.stdout.write(data);
+      bufNl += data.toString();
+      const lines = bufNl.split("\n");
+      bufNl = lines.pop();
+      for (const line of lines) {
+        parseChildLine(line);
+      }
+    });
+    currentChild.stderr.on("data", (data) => {
+      process.stderr.write(data);
+      parseChildLine(data.toString());
     });
   }
 
@@ -359,11 +379,36 @@ function run() {
       success++;
       runStatus = "SUCCESS";
       lastError = "";
+      googleBlockedCount = 0;
       logger.info(`Run #${count} completed (${runElapsed}).`, true);
     } else {
       failed++;
       runStatus = "FAILED";
       logger.info(`Run #${count} stopped (code ${code}${signal ? `, signal ${signal}` : ""}) (${runElapsed}).`, true);
+    }
+
+    if (currentRunBlocked) {
+      googleBlockedCount++;
+      logger.info(`[loop] Google blocked count: ${googleBlockedCount}/6`, true);
+    }
+
+    if (
+      googleBlockedCount >= 6 &&
+      process.env.USE_PROXY !== "true"
+    ) {
+      logger.info("[loop] IP blocked 6x consecutive. Switching to proxy mode and restarting...", true);
+      stopHeadlessDisplay();
+      disableKeypress();
+      process.env.USE_PROXY = "true";
+      const child = spawn("npm", ["run", "auto-xiaomi"], {
+        stdio: "inherit",
+        cwd: ROOT,
+        env: process.env,
+        shell: true,
+        detached: true,
+      });
+      child.unref();
+      process.exit(0);
     }
 
     if (HEADLESS) renderHeadlessStatus();
