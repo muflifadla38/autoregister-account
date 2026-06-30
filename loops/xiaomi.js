@@ -275,6 +275,26 @@ function parseChildLine(line) {
 function run() {
   count++;
   const { proxy, country } = getProxyInfo(process.env);
+
+  if (
+    process.env.USE_PROXY === "true" &&
+    !process.env.PROXIES &&
+    available.length === 0
+  ) {
+    logger.info("[loop] Proxy list exhausted. Restarting with npm run auto-xiaomi...", true);
+    stopHeadlessDisplay();
+    disableKeypress();
+    const child = spawn("npm", ["run", "auto-xiaomi"], {
+      stdio: "inherit",
+      cwd: ROOT,
+      env: process.env,
+      shell: true,
+      detached: true,
+    });
+    child.unref();
+    process.exit(0);
+  }
+
   currentProxy = proxy;
   currentCountry = country;
   currentStep = "";
