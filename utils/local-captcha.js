@@ -171,6 +171,14 @@ async function solveImageCaptcha(imgLocator, page, options) {
         if (
           !(await imgLocator.isVisible({ timeout: 1000 }).catch(() => false))
         ) {
+          try {
+            await fetch(`${LOCAL_SOLVER_API}/api/accept`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ image_base64: bodyBase64, text: answer }),
+            });
+            console.log(`  Captcha accepted for training dataset.`);
+          } catch (_) {}
           return true;
         }
         console.log("  Wrong answer, retrying...");
