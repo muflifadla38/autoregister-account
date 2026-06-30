@@ -859,7 +859,7 @@ async function register() {
             );
 
             const solved = await solveImageCaptcha(customImg, page, {
-              retries: 20,
+              retries: 10,
             });
             if (solved) {
               logger.info("  Custom captcha solved!", true);

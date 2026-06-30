@@ -9,34 +9,45 @@ async function solveCaptcha(imagePath) {
   const imageBuffer = fs.readFileSync(imagePath);
   const base64 = imageBuffer.toString("base64");
 
+  return solveCaptchaBase64(base64);
+}
+
+async function solveCaptchaBase64(base64) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
-    const res = await fetch(`${LOCAL_SOLVER_API}/solve`, {
+    const res = await fetch(`${LOCAL_SOLVER_API}/api/solve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: base64 }),
+      body: JSON.stringify({ image_base64: base64 }),
       signal: controller.signal,
     });
 
     if (!res.ok) {
       return {
         status: "failed",
+        latency_ms: null,
         message: `HTTP ${res.status}: ${res.statusText}`,
-        data: null,
+        captcha_text: null,
       };
     }
 
     return await res.json();
   } catch (e) {
     if (e.name === "AbortError") {
-      return { status: "failed", message: "Request timeout (30s)", data: null };
+      return {
+        status: "failed",
+        latency_ms: null,
+        message: "Request timeout (120s)",
+        captcha_text: null,
+      };
     }
     return {
       status: "failed",
+      latency_ms: null,
       message: `Connection error: ${e.message}`,
-      data: null,
+      captcha_text: null,
     };
   } finally {
     clearTimeout(timeout);
@@ -112,14 +123,15 @@ async function solveImageCaptcha(imgLocator, page, options) {
 
       fs.writeFileSync(debugPath, Buffer.from(bodyBase64, "base64"));
 
-      const result = await solveCaptcha(debugPath);
-      if (result.status !== "success" || !result.data) {
+      const result = await solveCaptchaBase64(bodyBase64);
+      if (result.status !== "success" || !result.captcha_text) {
         console.log(`  Local solver failed: ${result.message}`);
         continue;
       }
 
-      const answer = String(result.data).trim();
-      console.log(`  Captcha answer: "${answer}"`);
+      const answer = String(result.captcha_text).trim();
+      const latency = (result.latency_ms / 1000).toFixed(2);
+      console.log(`  Captcha answer: "${answer}" [${latency}s]`);
 
       const input = page.locator(inputSelector).first();
       if (!(await input.isVisible({ timeout: 3000 }).catch(() => false))) {
@@ -175,4 +187,4 @@ async function solveImageCaptcha(imgLocator, page, options) {
   return false;
 }
 
-module.exports = { solveCaptcha, solveImageCaptcha };
+module.exports = { solveCaptcha, solveCaptchaBase64, solveImageCaptcha };
