@@ -50,6 +50,7 @@ let runStartTime = 0;
 let runStatus = "IDLE";
 let lastError = "";
 let paused = false;
+let logLines = [];
 
 function suspendTree(pid) {
   try {
@@ -121,19 +122,39 @@ function renderHeadlessStatus() {
       `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${displayStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}` +
       `\x1b[${row3};1H\x1b[2K` +
       (lastError ? `\x1b[31m  ${lastError}\x1b[0m` : "") +
-      `\x1b[4;1H`, // move cursor back to scroll area
+      `\x1b[0m`,
   );
+}
+
+function renderLogArea() {
+  if (!HEADLESS) return;
+  const rows = process.stdout.rows || 40;
+  const areaHeight = rows - 3;
+  if (areaHeight <= 0) return;
+
+  const visible = logLines.slice(-areaHeight);
+  const padCount = areaHeight - visible.length;
+  let out = "";
+  for (let i = 0; i < areaHeight; i++) {
+    const row = i + 1;
+    out += `\x1b[${row};1H\x1b[2K`;
+    if (i >= padCount) {
+      out += visible[i - padCount];
+    }
+  }
+  process.stdout.write(out + "\x1b[0m");
 }
 
 let headlessInterval = null;
 function startHeadlessDisplay() {
   if (!HEADLESS) return;
-  const rows = process.stdout.rows || 40;
-  const scrollEnd = rows - 3;
   process.stdout.write("\x1B[2J\x1B[0f"); // clear terminal
-  process.stdout.write(`\x1b[1;${scrollEnd}r`); // scroll region: rows 1 to (rows-3)
   renderHeadlessStatus();
-  headlessInterval = setInterval(renderHeadlessStatus, 1000);
+  renderLogArea();
+  headlessInterval = setInterval(() => {
+    renderHeadlessStatus();
+    renderLogArea();
+  }, 1000);
 }
 
 function stopHeadlessDisplay() {
@@ -142,9 +163,8 @@ function stopHeadlessDisplay() {
     headlessInterval = null;
   }
   const rows = process.stdout.rows || 40;
-  process.stdout.write("\x1b[r"); // reset scroll region
-  process.stdout.write(`\x1b[${rows};1H`); // move cursor to bottom
-  process.stdout.write("\x1b[0m"); // reset colors
+  process.stdout.write(`\x1b[${rows};1H`);
+  process.stdout.write("\x1b[0m");
 }
 
 // ─── TERMINAL DISPLAY ───────────────────────────────
@@ -277,31 +297,61 @@ function onKey(chunk) {
 // ─── PARSE CHILD OUTPUT (headless) ──────────────────
 
 function parseChildLine(line) {
-  const stepMatch = line.match(/\[(\d+\/\d+)\]\s*(.*)/);
+  const trimmed = line.trim();
+  if (!trimmed) return;
+
+  const stepMatch = trimmed.match(/\[(\d+\/\d+)\]\s*(.*)/);
   if (stepMatch) {
     currentStep = `[${stepMatch[1]}] ${stepMatch[2].trim()}`;
     runStatus = "RUNNING";
     lastError = "";
+    logLines.push(`\x1b[36m${currentStep}\x1b[0m`);
     return;
   }
-  if (line.includes("ERROR:") || line.includes("[proxy] Proxy error")) {
-    lastError = line.trim().substring(0, 80);
+  if (trimmed.includes("ERROR:") || trimmed.includes("[proxy] Proxy error")) {
+    lastError = trimmed.substring(0, 80);
     runStatus = "FAILED";
+    logLines.push(`\x1b[31m${lastError}\x1b[0m`);
+    return;
   }
-  if (line.includes("REGISTRATION SUMMARY")) {
+  if (trimmed.includes("REGISTRATION SUMMARY")) {
     runStatus = "SUCCESS";
     lastError = "";
+    logLines.push(`\x1b[32m✓ Registration complete\x1b[0m`);
+    return;
   }
-  if (line.includes("Playing manual-captcha sound alert")) {
+  if (trimmed.includes("Playing manual-captcha sound alert")) {
     lastError = "Manual captcha required — skipping";
     runStatus = "FAILED";
+    logLines.push(`\x1b[33m⚠ Manual captcha required\x1b[0m`);
+    return;
   }
-  if (line.includes("TIMEOUT:")) {
-    lastError = line.trim().substring(0, 80);
+  if (trimmed.includes("TIMEOUT:")) {
+    lastError = trimmed.substring(0, 80);
     runStatus = "FAILED";
+    logLines.push(`\x1b[31m⏰ ${lastError}\x1b[0m`);
+    return;
   }
-  if (line.includes("Google blocked this IP/network")) {
+  if (trimmed.includes("Google blocked this IP/network")) {
     currentRunBlocked = true;
+    logLines.push(`\x1b[31m⊘ Google blocked IP\x1b[0m`);
+    return;
+  }
+
+  if (
+    trimmed.startsWith("[") &&
+    (trimmed.includes("proxy") ||
+      trimmed.includes("captcha") ||
+      trimmed.includes("OTP") ||
+      trimmed.includes("email") ||
+      trimmed.includes("nav") ||
+      trimmed.includes("blacklist") ||
+      trimmed.includes("sound") ||
+      trimmed.includes("extract") ||
+      trimmed.includes("Terms") ||
+      trimmed.includes("API"))
+  ) {
+    logLines.push(trimmed.substring(0, 100));
   }
 }
 
@@ -336,10 +386,12 @@ function run() {
   runStatus = "RUNNING";
   runStartTime = Date.now();
   lastError = "";
+  logLines = [];
 
   const proxyLabel = proxy
     ? `proxy: ${proxy.includes("@") ? proxy.split("@").pop() : proxy} (Country: ${country || "N/A"})`
     : "no proxy";
+  logLines.push(`\x1b[36m=== RUN #${count} (${proxyLabel}) ===\x1b[0m`);
 
   if (!HEADLESS) {
     logger.info(`\n=== RUN #${count} (${proxyLabel}) ===`, true);
@@ -357,7 +409,6 @@ function run() {
   running = true;
   enableKeypress();
 
-  process.exit;
   if (HEADLESS) {
     currentChild = spawn("node", ["register.js", "xiaomi"], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -371,14 +422,14 @@ function run() {
       buf = lines.pop();
       for (const line of lines) {
         parseChildLine(line);
-        logger.info(line.trim());
       }
+      renderLogArea();
     });
     currentChild.stderr.on("data", (data) => {
       const line = data.toString().trim();
       if (line) {
         parseChildLine(line);
-        logger.error(line);
+        renderLogArea();
       }
     });
   } else {
