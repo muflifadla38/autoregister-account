@@ -125,6 +125,63 @@ const PROVIDERS = {
       return items;
     },
   },
+  geonode: {
+    name: "geonode",
+    url: "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc&protocols=http%2Chttps",
+    parse(raw) {
+      let data;
+      try { data = JSON.parse(raw); } catch { return []; }
+      const proxies = data.data || [];
+      const items = [];
+      const stats = { total: 0, countries: {}, latencySum: 0, latencyCount: 0, oldest: null, newest: null };
+      for (const px of proxies) {
+        if (!px.ip || !px.port) continue;
+        const protocol = px.protocols && px.protocols.length > 0 ? px.protocols[0] : "http";
+        const country = px.country || "";
+        items.push({ proxy: protocol + "://" + px.ip + ":" + px.port, country });
+        stats.total++;
+        if (country) stats.countries[country] = (stats.countries[country] || 0) + 1;
+      }
+      printProviderStats(stats);
+      return items;
+    },
+  },
+  monosans: {
+    name: "monosans",
+    url: "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    parse(raw) {
+      const lines = raw.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#"));
+      const items = [];
+      const stats = { total: 0, countries: {}, latencySum: 0, latencyCount: 0, oldest: null, newest: null };
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (/^\d+\.\d+\.\d+\.\d+:\d+/.test(trimmed)) {
+          items.push({ proxy: "http://" + trimmed, country: "" });
+          stats.total++;
+        }
+      }
+      printProviderStats(stats);
+      return items;
+    },
+  },
+  thespeedx: {
+    name: "thespeedx",
+    url: "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+    parse(raw) {
+      const lines = raw.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#"));
+      const items = [];
+      const stats = { total: 0, countries: {}, latencySum: 0, latencyCount: 0, oldest: null, newest: null };
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (/^\d+\.\d+\.\d+\.\d+:\d+/.test(trimmed)) {
+          items.push({ proxy: "http://" + trimmed, country: "" });
+          stats.total++;
+        }
+      }
+      printProviderStats(stats);
+      return items;
+    },
+  },
 };
 
 const DEFAULT_PROVIDER = "hproxy";

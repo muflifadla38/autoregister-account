@@ -1307,23 +1307,23 @@ async function register() {
       'span:has-text("Create")',
       '[class*="create" i]',
       '[class*="add" i]',
-      "button",
     ];
     let createBtn = null;
     for (const selector of createBtnSelectors) {
       const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout: 60000 }).catch(() => false)) {
+      if (await el.isVisible({ timeout: 30000 }).catch(() => false)) {
         createBtn = el;
         break;
       }
     }
     if (createBtn) {
-      await createBtn.click();
+      await createBtn.click({ force: true });
       await sleep(1500);
       logger.info("  Create API Key dialog opened", true);
     } else {
-      logger.info("  [WARN] Create button not found", true);
-      // await page.screenshot({ path: 'no_create_btn.png' });
+      logger.info("  [WARN] Create button not found, trying keyboard shortcut...", true);
+      await page.keyboard.press("Enter");
+      await sleep(1500);
     }
 
     // Fill API key name in modal/input
@@ -1345,6 +1345,7 @@ async function register() {
       }
     }
     if (nameInput) {
+      await nameInput.click({ force: true });
       await nameInput.fill("");
       await nameInput.fill(CONFIG.apiKeyName);
       logger.info(`  API Key name: ${CONFIG.apiKeyName}`, true);
@@ -1374,7 +1375,7 @@ async function register() {
       }
     }
     if (confirmBtn) {
-      await confirmBtn.click();
+      await confirmBtn.click({ force: true });
       await sleep(2000);
       logger.info("  API Key creation confirmed", true);
     }
