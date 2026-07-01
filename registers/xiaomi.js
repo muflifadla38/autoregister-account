@@ -768,21 +768,21 @@ async function register() {
           )
           .first(),
       );
-    await emailInput.click({ timeout: 300000 });
+    await emailInput.click({ force: true, timeout: 300000 });
     await sleep(rand(300, 800));
     await typeInto(emailInput, email);
     await sleep(rand(400, 900));
 
     // Fill password
     const passwordInputs = page.locator('input[type="password"]');
-    await passwordInputs.nth(0).click();
+    await passwordInputs.nth(0).click({ force: true });
     await sleep(rand(200, 400));
     await typeInto(passwordInputs.nth(0), CONFIG.password);
     await sleep(rand(200, 500));
 
     // Fill confirm password
     if ((await passwordInputs.count()) > 1) {
-      await passwordInputs.nth(1).click();
+      await passwordInputs.nth(1).click({ force: true });
       await sleep(rand(200, 400));
       await typeInto(passwordInputs.nth(1), CONFIG.password);
       await sleep(rand(200, 500));
