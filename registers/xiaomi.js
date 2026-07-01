@@ -449,7 +449,9 @@ async function handleTermsAgreement(page) {
     }
   }
 
-  logger.info("  [WARN] Confirm button not found, proceeding anyway...", true);
+  logger.info("  [WARN] Confirm button not found, aborting...", true);
+  process.exitCode = 1;
+  return;
 }
 
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
@@ -827,12 +829,13 @@ async function register() {
           });
         }
 
-        if (solved) logger.info("  Captcha solved! Continuing...", true);
-        else
-          logger.info(
-            "  [WARN] Captcha solver timeout, proceeding anyway...",
-            true,
-          );
+        if (solved) {
+          logger.info("  Captcha solved! Continuing...", true);
+        } else {
+          logger.info("  [WARN] Captcha solver timeout, aborting...", true);
+          process.exitCode = 1;
+          return;
+        }
       } else if (!checkboxClicked) {
         if (process.env.AUTO_SKIP_MANUAL_CAPTCHA === "true") {
           logger.info(
@@ -856,10 +859,9 @@ async function register() {
         if (captchaSolved) {
           logger.info("  Captcha solved! Continuing...", true);
         } else {
-          logger.info(
-            "  [WARN] Captcha detection timeout, proceeding anyway...",
-            true,
-          );
+          logger.info("  [WARN] Captcha detection timeout, aborting...", true);
+          process.exitCode = 1;
+          return;
         }
       } else {
         try {
@@ -1078,10 +1080,9 @@ async function register() {
       if (captchaSolved) {
         logger.info("  Captcha solved! Continuing...", true);
       } else {
-        logger.info(
-          "  [WARN] Captcha detection timeout, proceeding anyway...",
-          true,
-        );
+        logger.info("  [WARN] Captcha detection timeout, aborting...", true);
+        process.exitCode = 1;
+        return;
       }
     }
 
