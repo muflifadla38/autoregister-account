@@ -129,6 +129,7 @@ function renderHeadlessStatus() {
 function renderLogArea() {
   if (!HEADLESS) return;
   const rows = process.stdout.rows || 40;
+  const cols = process.stdout.columns || 120;
   const areaHeight = rows - 3;
   if (areaHeight <= 0) return;
 
@@ -139,7 +140,8 @@ function renderLogArea() {
     const row = i + 1;
     out += `\x1b[${row};1H\x1b[2K`;
     if (i >= padCount) {
-      out += visible[i - padCount];
+      const text = visible[i - padCount];
+      out += text.length > cols ? text.substring(0, cols) : text;
     }
   }
   process.stdout.write(out + "\x1b[0m");
@@ -305,53 +307,31 @@ function parseChildLine(line) {
     currentStep = `[${stepMatch[1]}] ${stepMatch[2].trim()}`;
     runStatus = "RUNNING";
     lastError = "";
-    logLines.push(`\x1b[36m${currentStep}\x1b[0m`);
     return;
   }
   if (trimmed.includes("ERROR:") || trimmed.includes("[proxy] Proxy error")) {
     lastError = trimmed.substring(0, 80);
     runStatus = "FAILED";
-    logLines.push(`\x1b[31m${lastError}\x1b[0m`);
     return;
   }
   if (trimmed.includes("REGISTRATION SUMMARY")) {
     runStatus = "SUCCESS";
     lastError = "";
-    logLines.push(`\x1b[32m✓ Registration complete\x1b[0m`);
     return;
   }
   if (trimmed.includes("Playing manual-captcha sound alert")) {
     lastError = "Manual captcha required — skipping";
     runStatus = "FAILED";
-    logLines.push(`\x1b[33m⚠ Manual captcha required\x1b[0m`);
     return;
   }
   if (trimmed.includes("TIMEOUT:")) {
     lastError = trimmed.substring(0, 80);
     runStatus = "FAILED";
-    logLines.push(`\x1b[31m⏰ ${lastError}\x1b[0m`);
     return;
   }
   if (trimmed.includes("Google blocked this IP/network")) {
     currentRunBlocked = true;
-    logLines.push(`\x1b[31m⊘ Google blocked IP\x1b[0m`);
     return;
-  }
-
-  if (
-    trimmed.startsWith("[") &&
-    (trimmed.includes("proxy") ||
-      trimmed.includes("captcha") ||
-      trimmed.includes("OTP") ||
-      trimmed.includes("email") ||
-      trimmed.includes("nav") ||
-      trimmed.includes("blacklist") ||
-      trimmed.includes("sound") ||
-      trimmed.includes("extract") ||
-      trimmed.includes("Terms") ||
-      trimmed.includes("API"))
-  ) {
-    logLines.push(trimmed.substring(0, 100));
   }
 }
 
@@ -422,6 +402,8 @@ function run() {
       buf = lines.pop();
       for (const line of lines) {
         parseChildLine(line);
+        const trimmed = line.trim();
+        if (trimmed) logLines.push(trimmed);
       }
       renderLogArea();
     });
@@ -429,6 +411,7 @@ function run() {
       const line = data.toString().trim();
       if (line) {
         parseChildLine(line);
+        logLines.push(`\x1b[31m${line}\x1b[0m`);
         renderLogArea();
       }
     });
