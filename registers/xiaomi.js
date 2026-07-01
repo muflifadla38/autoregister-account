@@ -587,6 +587,108 @@ async function typeInto(locator, text) {
   }
 }
 
+async function extractApiKeyFromPage(page) {
+  const selectors = [
+    "code",
+    "pre",
+    '[class*="key"] code',
+    '[class*="secret"]',
+    '[class*="token"]',
+    "input[readonly]",
+    '[class*="apikey"] code',
+    ".copyable",
+  ];
+  for (const selector of selectors) {
+    const el = page.locator(selector).first();
+    if (await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+      const text = await el.textContent().catch(() => "");
+      if (text && text.trim().length > 10 && text.trim().startsWith("sk-")) {
+        return text.trim();
+      }
+    }
+  }
+  const readonlyInput = page.locator("input[readonly]").first();
+  if (await readonlyInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+    const val = await readonlyInput.inputValue().catch(() => "");
+    if (val && val.startsWith("sk-")) return val;
+  }
+  try {
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    if (clip && clip.startsWith("sk-")) return clip;
+  } catch (_) {}
+  return null;
+}
+
+async function createApiKeyOnPage(page, keyName) {
+  const btnSelectors = [
+    'button:has-text("Create API Key")',
+    'button:has-text("Create")',
+    'button:has-text("New API")',
+    'button:has-text("New")',
+    'button:has-text("Add")',
+    'a:has-text("Create")',
+    'a:has-text("New")',
+    'span:has-text("Create")',
+    '[class*="create" i]',
+    '[class*="add" i]',
+  ];
+  let createBtn = null;
+  for (const selector of btnSelectors) {
+    const el = page.locator(selector).first();
+    if (await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+      createBtn = el;
+      break;
+    }
+  }
+  if (!createBtn) {
+    logger.info("  [WARN] Create button not found", true);
+    return false;
+  }
+  await createBtn.click({ force: true });
+  await sleep(1500);
+  logger.info("  Create API Key dialog opened", true);
+
+  const nameSelectors = [
+    'input[placeholder*="name" i]',
+    'input[placeholder*="Name" i]',
+    'input[placeholder*="key" i]',
+    'input[placeholder*="label" i]',
+    'input[name*="name" i]',
+    'input[type="text"]',
+  ];
+  for (const selector of nameSelectors) {
+    const el = page.locator(selector).first();
+    if (await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await el.click({ force: true });
+      await el.fill("");
+      await el.fill(keyName);
+      logger.info(`  API Key name: ${keyName}`, true);
+      break;
+    }
+  }
+  await sleep(500);
+
+  const confirmSelectors = [
+    'button:has-text("Confirm")',
+    'button:has-text("OK")',
+    'button:has-text("Create")',
+    'button:has-text("Submit")',
+    'button:has-text("Save")',
+    'button[type="submit"]',
+  ];
+  for (const selector of confirmSelectors) {
+    const el = page.locator(selector).first();
+    if (await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await el.click({ force: true });
+      await sleep(2000);
+      logger.info("  API Key creation confirmed", true);
+      return true;
+    }
+  }
+  logger.info("  [WARN] Confirm button not found", true);
+  return false;
+}
+
 async function register() {
   const startTime = Date.now();
   const TOTAL_STEPS = process.env.USE_REFERRAL_CODE === "true" ? 12 : 11;
@@ -1240,33 +1342,17 @@ async function register() {
     // Step 10: Create API Key
     logger.info(`[10/${TOTAL_STEPS}] Creating API Key...`, true);
 
-    // Try common API key page URLs
-    const apiKeyPaths = [
-      "/apikey",
-      "/developer/apikey",
-      "/settings/apikey",
-      "/developer",
-      "/keys",
-      "/settings",
-    ];
+    const apiKeyPaths = ["/apikey", "/developer/apikey", "/settings/apikey", "/developer", "/keys"];
     let foundApiPage = false;
 
-    // First try: find sidebar/header link
     const apiTabSelectors = [
-      'a:has-text("API")',
-      'button:has-text("API")',
-      'a:has-text("Key")',
-      'a:has-text("Developer")',
-      'a:has-text("Settings")',
-      '[href*="apikey" i]',
-      '[href*="api-key" i]',
-      '[href*="developer" i]',
-      '[href*="settings" i]',
+      'a:has-text("API")', 'button:has-text("API")',
+      '[href*="apikey" i]', '[href*="api-key" i]', '[href*="developer" i]',
     ];
     for (const selector of apiTabSelectors) {
       const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout: 60000 }).catch(() => false)) {
-        await el.click();
+      if (await el.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await el.click({ force: true });
         await sleep(2000);
         foundApiPage = true;
         logger.info(`  Found nav link via: ${selector}`, true);
@@ -1274,17 +1360,14 @@ async function register() {
       }
     }
 
-    // Fallback: try direct URLs
     if (!foundApiPage) {
       for (const p of apiKeyPaths) {
         const url = CONFIG.consoleUrl + p;
         try {
-          await page.goto(url, {
-            waitUntil: "domcontentloaded",
-            timeout: 600000,
-          });
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
           await handleCookies(page);
-          await sleep(1500);
+          await sleep(3000);
+          await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
           foundApiPage = true;
           logger.info(`  Navigated to: ${url}`, true);
           break;
@@ -1292,223 +1375,46 @@ async function register() {
       }
     }
 
-    // await page.screenshot({ path: 'api_keys_page.png' });
-    await sleep(1000);
-
-    // Click "Create" or "New" button
-    const createBtnSelectors = [
-      'button:has-text("Create API Key")',
-      'button:has-text("Create")',
-      'button:has-text("New API")',
-      'button:has-text("New")',
-      'button:has-text("Add")',
-      'a:has-text("Create")',
-      'a:has-text("New")',
-      'span:has-text("Create")',
-      '[class*="create" i]',
-      '[class*="add" i]',
-    ];
-    let createBtn = null;
-    for (const selector of createBtnSelectors) {
-      const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout: 30000 }).catch(() => false)) {
-        createBtn = el;
-        break;
-      }
-    }
-    if (createBtn) {
-      await createBtn.click({ force: true });
-      await sleep(1500);
-      logger.info("  Create API Key dialog opened", true);
-    } else {
-      logger.info("  [WARN] Create button not found, trying keyboard shortcut...", true);
-      await page.keyboard.press("Enter");
-      await sleep(1500);
+    if (!foundApiPage) {
+      logger.info("  [WARN] Could not find or navigate to API key page", true);
     }
 
-    // Fill API key name in modal/input
-    const nameInputSelectors = [
-      'input[placeholder*="name" i]',
-      'input[placeholder*="Name" i]',
-      'input[placeholder*="key" i]',
-      'input[placeholder*="label" i]',
-      'input[name*="name" i]',
-      'input[name*="label" i]',
-      'input[type="text"]',
-    ];
-    let nameInput = null;
-    for (const selector of nameInputSelectors) {
-      const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout: 60000 }).catch(() => false)) {
-        nameInput = el;
-        break;
-      }
-    }
-    if (nameInput) {
-      await nameInput.click({ force: true });
-      await nameInput.fill("");
-      await nameInput.fill(CONFIG.apiKeyName);
-      logger.info(`  API Key name: ${CONFIG.apiKeyName}`, true);
-      await sleep(500);
-    } else {
-      logger.info("  [WARN] Name input not found", true);
-    }
+    // Extract existing key first (may already have one)
+    let apiKey = await extractApiKeyFromPage(page);
 
-    // Confirm via modal button
-    const confirmSelectors = [
-      'button:has-text("Confirm")',
-      'button:has-text("OK")',
-      'button:has-text("Create")',
-      'button:has-text("Submit")',
-      'button:has-text("Save")',
-      'button[type="submit"]',
-      '.modal button:has-text("OK")',
-      '.dialog button:has-text("Confirm")',
-      'button:has-text("Yes")',
-    ];
-    let confirmBtn = null;
-    for (const selector of confirmSelectors) {
-      const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout: 60000 }).catch(() => false)) {
-        confirmBtn = el;
-        break;
-      }
-    }
-    if (confirmBtn) {
-      await confirmBtn.click({ force: true });
-      await sleep(2000);
-      logger.info("  API Key creation confirmed", true);
-    }
-    // await page.screenshot({ path: 'api_key_created.png' });
-
-    // Step 10: Extract and save the API key
-    logger.info(`[11/${TOTAL_STEPS}] Extracting API Key...`, true);
-    let apiKey = "";
-
-    // Try to find the API key value on the page
-    const keySelectors = [
-      "code",
-      "pre",
-      '[class*="key"] code',
-      '[class*="secret"]',
-      '[class*="token"]',
-      "input[readonly]",
-      'input:has-text("sk-")',
-      'input[value*="sk-"]',
-      '[class*="apikey"] code',
-      ".copyable",
-    ];
-    for (const selector of keySelectors) {
-      const el = page.locator(selector).first();
-      if (await el.isVisible({ timeout: 60000 }).catch(() => false)) {
-        const text = await el.textContent().catch(() => "");
-        if (text && text.trim().length > 10) {
-          apiKey = text.trim();
-          break;
-        }
-      }
-    }
-
-    // Fallback: try to read from input value
+    // If no existing key, create one
     if (!apiKey) {
-      const readonlyInput = page.locator("input[readonly]").first();
-      if (
-        await readonlyInput.isVisible({ timeout: 60000 }).catch(() => false)
-      ) {
-        apiKey = await readonlyInput.inputValue().catch(() => "");
+      const created = await createApiKeyOnPage(page, CONFIG.apiKeyName);
+      if (created) {
+        await sleep(2000);
+        apiKey = await extractApiKeyFromPage(page);
       }
     }
 
-    // Fallback: try clipboard (some sites auto-copy)
-    if (!apiKey) {
-      try {
-        apiKey = await page.evaluate(() => navigator.clipboard.readText());
-      } catch (_) {}
-    }
-
-    // Validate API key format (sk-*) to prevent clipboard paste bugs
-    if (apiKey && !apiKey.startsWith("sk-")) {
-      logger.info(
-        `  [WARN] Key format invalid (not sk-*): "${apiKey.substring(0, 20)}..."`,
-        true,
-      );
-      logger.info(
-        "  [WARN] Creating new API key to replace invalid one...",
-        true,
-      );
-      apiKey = "";
-    }
-
-    // If key is missing or invalid, retry extraction
-    if (!apiKey || apiKey === "-") {
-      logger.info(
-        "  [WARN] Valid API key not found, attempting to create new one...",
-        true,
-      );
-      // Re-navigate to API key page and create
-      for (const p of ["/apikey", "/developer/apikey", "/developer"]) {
+    // Retry once if still no key
+    if (!apiKey || !apiKey.startsWith("sk-")) {
+      logger.info("  [WARN] First attempt failed, retrying...", true);
+      for (const p of apiKeyPaths) {
         try {
-          await page.goto(CONFIG.consoleUrl + p, {
-            waitUntil: "domcontentloaded",
-            timeout: 30000,
-          });
-          await sleep(2000);
+          await page.goto(CONFIG.consoleUrl + p, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await sleep(3000);
+          await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
           break;
         } catch (_) {}
       }
-      // Try create button
-      const retryCreateBtn = page
-        .locator('button:has-text("Create API Key"), button:has-text("Create")')
-        .first();
-      if (
-        await retryCreateBtn.isVisible({ timeout: 5000 }).catch(() => false)
-      ) {
-        await retryCreateBtn.click();
-        await sleep(1500);
-        const retryNameInput = page
-          .locator(
-            'input[placeholder*="name" i], input[placeholder*="Name" i], input[type="text"]',
-          )
-          .first();
-        if (
-          await retryNameInput.isVisible({ timeout: 3000 }).catch(() => false)
-        ) {
-          await retryNameInput.fill("");
-          await retryNameInput.fill(CONFIG.apiKeyName);
-          await sleep(500);
-        }
-        const retryConfirm = page
-          .locator(
-            'button:has-text("Confirm"), button:has-text("OK"), button:has-text("Create")',
-          )
-          .first();
-        if (
-          await retryConfirm.isVisible({ timeout: 3000 }).catch(() => false)
-        ) {
-          await retryConfirm.click();
-          await sleep(3000);
-        }
-      }
-      // Re-extract key
-      for (const selector of keySelectors) {
-        const el = page.locator(selector).first();
-        if (await el.isVisible({ timeout: 5000 }).catch(() => false)) {
-          const text = await el.textContent().catch(() => "");
-          if (
-            text &&
-            text.trim().length > 10 &&
-            text.trim().startsWith("sk-")
-          ) {
-            apiKey = text.trim();
-            break;
-          }
-        }
-      }
-      if (!apiKey || !apiKey.startsWith("sk-")) {
-        logger.info("  [WARN] Could not get valid sk-* key after retry.", true);
-        apiKey = apiKey || "-";
+      const created2 = await createApiKeyOnPage(page, CONFIG.apiKeyName + "-2");
+      if (created2) {
+        await sleep(2000);
+        apiKey = await extractApiKeyFromPage(page);
       }
     }
+
+    if (!apiKey) apiKey = "-";
+    logger.info(`  API Key: ${apiKey}`, true);
+    // await page.screenshot({ path: 'api_key_created.png' });
+
+    // Step 11: Save the API key
+    logger.info(`[11/${TOTAL_STEPS}] Saving API Key...`, true);
 
     if (apiKey !== "-") {
       // Save to CSV
