@@ -506,7 +506,7 @@ function run() {
       printReport();
       process.exit(0);
     }
-    const delay = 10000 + Math.floor(Math.random() * 10000);
+    const delay = 30000 + Math.floor(Math.random() * 30000);
     logger.info(
       `Waiting ${Math.round(delay / 1000)}s before next run...`,
       true,

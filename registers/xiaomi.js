@@ -106,7 +106,7 @@ const CONFIG = {
   // Proxy (optional): 'http://host:port' or empty to disable
   proxy: null,
   // Blacklist duration in minutes for proxies flagged by Google
-  blacklistDuration: 10,
+  blacklistDuration: 60,
 };
 
 // sleep, rand, and typeHuman functions are now imported from ./utils/helpers.js
@@ -327,7 +327,10 @@ const COUNTRY_PROFILES = {
 
 function getCountryProfile(country) {
   const c = (country || "").toUpperCase();
-  return COUNTRY_PROFILES[c] || COUNTRY_PROFILES._default;
+  const base = COUNTRY_PROFILES[c] || COUNTRY_PROFILES._default;
+  const version = rand(124, 130);
+  const ua = base.ua.replace(/Chrome\/\d+\.\d+\.\d+\.\d+/, `Chrome/${version}.0.${rand(5000, 6999)}.${rand(0, 150)}`);
+  return { ...base, ua };
 }
 
 let SELECTED_PROXY = "";
@@ -577,6 +580,13 @@ function removeProxyFromCsv(proxy) {
   }
 }
 
+async function typeInto(locator, text) {
+  for (const char of text) {
+    await locator.press(char);
+    await sleep(rand(60, 180));
+  }
+}
+
 async function register() {
   const startTime = Date.now();
   const TOTAL_STEPS = process.env.USE_REFERRAL_CODE === "true" ? 12 : 11;
@@ -603,6 +613,9 @@ async function register() {
       "--disable-dev-shm-usage",
       "--disable-popup-blocking",
       "--start-minimized",
+      "--disable-blink-features=AutomationControlled",
+      "--disable-features=IsolateOrigins,site-per-process",
+      "--lang=en-US,en",
     ],
   };
 
@@ -636,8 +649,8 @@ async function register() {
     ignoreHTTPSErrors: true,
     userAgent: profile.ua,
     viewport: {
-      width: profile.platform === "macOS" ? 1440 : 1366,
-      height: profile.platform === "macOS" ? 900 : 768,
+      width: (profile.platform === "macOS" ? 1440 : 1366) + rand(-20, 20),
+      height: (profile.platform === "macOS" ? 900 : 768) + rand(-15, 15),
     },
     locale: profile.locale,
     timezoneId: profile.timezone,
@@ -649,6 +662,60 @@ async function register() {
     },
   };
   const context = await browser.newContext(contextOpts);
+
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+
+    Object.defineProperty(navigator, "plugins", {
+      get: () => [
+        { name: "Chrome PDF Plugin", filename: "internal-pdf-viewer" },
+        { name: "Chrome PDF Viewer", filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai" },
+        { name: "Native Client", filename: "internal-nacl-plugin" },
+      ],
+    });
+
+    Object.defineProperty(navigator, "languages", {
+      get: () => [navigator.language, "en-US", "en"],
+    });
+
+    const origQuery = window.navigator.permissions.query;
+    window.navigator.permissions.query = (params) =>
+      params.name === "notifications"
+        ? Promise.resolve({ state: Notification.permission })
+        : origQuery(params);
+
+    window.chrome = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
+
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function (p) {
+      if (p === 37445) return "Intel Inc.";
+      if (p === 37446) return "Intel Iris OpenGL Engine";
+      return getParameter.call(this, p);
+    };
+
+    const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function (type) {
+      if (type === "image/png" && this.width < 16 && this.height < 16) {
+        const ctx = this.getContext("2d");
+        if (ctx) {
+          const d = ctx.getImageData(0, 0, this.width, this.height);
+          for (let i = 0; i < d.data.length; i += 4)
+            d.data[i] = d.data[i] ^ (Math.random() > 0.5 ? 1 : 0);
+          ctx.putImageData(d, 0, 0);
+        }
+      }
+      return origToDataURL.apply(this, arguments);
+    };
+
+    const origGetChannelData = AudioBuffer.prototype.getChannelData;
+    AudioBuffer.prototype.getChannelData = function (ch) {
+      const data = origGetChannelData.call(this, ch);
+      for (let i = 0; i < Math.min(data.length, 100); i++)
+        data[i] += Math.random() * 0.0001 - 0.00005;
+      return data;
+    };
+  });
+
   const page = await context.newPage();
 
   try {
@@ -665,7 +732,9 @@ async function register() {
     await gotoTolerant(page, CONFIG.landingUrl, { proxy: CONFIG.proxy });
     logger.info("  Waiting for cookie...", true);
     await handleCookies(page);
-    await sleep(rand(2000, 3000));
+    await sleep(rand(3000, 6000));
+    await page.mouse.move(rand(100, 500), rand(100, 300));
+    await sleep(rand(1000, 2500));
     logger.info(`  Register URL: ${CONFIG.registerUrl}`, true);
     await gotoTolerant(page, CONFIG.registerUrl, {
       proxy: CONFIG.proxy,
@@ -701,17 +770,21 @@ async function register() {
       );
     await emailInput.click({ timeout: 300000 });
     await sleep(rand(300, 800));
-    await emailInput.fill(email, { timeout: 300000 });
+    await typeInto(emailInput, email);
     await sleep(rand(400, 900));
 
     // Fill password
     const passwordInputs = page.locator('input[type="password"]');
-    await passwordInputs.nth(0).fill(CONFIG.password);
+    await passwordInputs.nth(0).click();
+    await sleep(rand(200, 400));
+    await typeInto(passwordInputs.nth(0), CONFIG.password);
     await sleep(rand(200, 500));
 
     // Fill confirm password
     if ((await passwordInputs.count()) > 1) {
-      await passwordInputs.nth(1).fill(CONFIG.password);
+      await passwordInputs.nth(1).click();
+      await sleep(rand(200, 400));
+      await typeInto(passwordInputs.nth(1), CONFIG.password);
       await sleep(rand(200, 500));
     }
 
@@ -731,9 +804,17 @@ async function register() {
     // await page.screenshot({ path: 'before_submit.png' });
     logger.info("  Screenshot saved: before_submit.png", true);
 
+    // Random human-like behavior before submit
+    await page.mouse.move(rand(200, 600), rand(200, 400));
+    await sleep(rand(500, 1500));
+    await page.mouse.move(rand(300, 700), rand(300, 500));
+    await sleep(rand(300, 800));
+    await page.evaluate((y) => window.scrollBy(0, y), rand(50, 200));
+    await sleep(rand(800, 2000));
+
     // Step 5: Submit and handle captcha
     logger.info(`[6/${TOTAL_STEPS}] Submitting form`, true);
-    await sleep(rand(1500, 4000));
+    await sleep(rand(2000, 5000));
     const submitBtn = page
       .locator(
         'button[type="submit"], button:has-text("Register"), button:has-text("Next"), button:has-text("Create"), a:has-text("Register")',
@@ -758,6 +839,7 @@ async function register() {
         try {
           requiredManualCaptcha = await isRequiredManualCaptcha(page);
           if (!requiredManualCaptcha) {
+            await sleep(rand(1000, 3000));
             await recaptchaCheckbox.click({ timeout: 5000 });
           } else {
             captchaHandled = true;
