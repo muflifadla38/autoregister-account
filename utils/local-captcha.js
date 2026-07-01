@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { sleep } = require("./helpers");
+const { randomInt } = require("crypto");
 
 const LOCAL_SOLVER_API = "http://127.0.0.1:5010";
 
@@ -53,6 +54,17 @@ async function solveCaptchaBase64(base64) {
   }
 }
 
+async function reportWrong(fileKey) {
+  if (!fileKey) return;
+  try {
+    await fetch(`${LOCAL_SOLVER_API}/api/wrong`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_key: fileKey }),
+    });
+  } catch (_) {}
+}
+
 async function extractImageBase64(imgLocator) {
   return await imgLocator.evaluate((img) => {
     return new Promise((resolve, reject) => {
@@ -91,11 +103,25 @@ async function solveImageCaptcha(imgLocator, page, options) {
 
   for (let i = 0; i < retries; i++) {
     console.log(`  Local captcha solver attempt ${i + 1}/${retries}...`);
-    await sleep(10000);
 
     const debugDir = path.join(__dirname, "..", "debug");
     if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
     const debugPath = path.join(debugDir, `captcha_${Date.now()}.png`);
+
+    // Regenerate captcha on retry (not first attempt)
+    if (i > 0) {
+      try {
+        await imgLocator.click({ force: true });
+        await sleep(randomInt(1000, 3000));
+        await page
+          .waitForLoadState("networkidle", { timeout: 5000 })
+          .catch(() => {});
+        await sleep(randomInt(1000, 2000));
+      } catch (_) {}
+    }
+
+    await sleep(randomInt(4000, 6000));
+
     try {
       let bodyBase64;
       try {
@@ -175,7 +201,9 @@ async function solveImageCaptcha(imgLocator, page, options) {
           } catch (_) {}
           return true;
         }
+        const fileKey = result.file_key || `${answer}.png`;
         console.log("  Wrong answer, retrying...");
+        await reportWrong(fileKey);
       }
     } catch (e) {
       console.log(`  Local captcha solver error: ${e.message}`);
