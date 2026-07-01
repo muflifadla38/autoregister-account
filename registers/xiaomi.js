@@ -612,10 +612,6 @@ async function extractApiKeyFromPage(page) {
     const val = await readonlyInput.inputValue().catch(() => "");
     if (val && val.startsWith("sk-")) return val;
   }
-  try {
-    const clip = await page.evaluate(() => navigator.clipboard.readText());
-    if (clip && clip.startsWith("sk-")) return clip;
-  } catch (_) {}
   return null;
 }
 
@@ -764,6 +760,7 @@ async function register() {
     },
   };
   const context = await browser.newContext(contextOpts);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => false });
