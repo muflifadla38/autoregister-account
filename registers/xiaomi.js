@@ -1553,12 +1553,46 @@ async function register() {
       }
     }
 
+    let balance = "N/A";
+    try {
+      await page.goto("https://platform.xiaomimimo.com/console/balance", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await sleep(2000);
+      await handleCookies(page);
+
+      const balanceText = await page.evaluate(() => {
+        const els = document.querySelectorAll("p");
+        for (const el of els) {
+          const t = el.textContent.trim();
+          if (/^\$\s*[\d.]+/.test(t)) return t;
+        }
+        const all = document.body.innerText;
+        const m = all.match(/\$\s*[\d.]+\s*\([\d.]+/);
+        return m ? m[0] : null;
+      });
+      if (balanceText) balance = balanceText;
+
+      const cashBonus = await page.evaluate(() => {
+        const all = document.body.innerText;
+        const cash = all.match(/Cash Balance:\s*\$\s*[\d.]+/);
+        const bonus = all.match(/Bonus Balance:\s*\$\s*[\d.]+/);
+        return [cash ? cash[0] : null, bonus ? bonus[0] : null];
+      });
+      if (cashBonus[0]) balance += ` (${cashBonus[0]}, ${cashBonus[1]})`;
+    } catch (e) {
+      logger.info(`  [balance] Failed: ${e.message}`, true);
+    }
+
     logger.info("\n========================================", true);
     logger.info("  REGISTRATION SUMMARY", true);
     logger.info("========================================", true);
     logger.info(`  Email:      ${email}`, true);
     logger.info(`  Password:   ${CONFIG.password}`, true);
     logger.info(`  API Key:    ${apiKey || "check api_key_created.png"}`, true);
+    logger.info(`  Balance:    ${balance}`, true);
     logger.info(`  Saved to:   ${CONFIG.outputFile}`, true);
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     const mins = Math.floor(elapsed / 60);
