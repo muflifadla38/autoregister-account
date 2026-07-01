@@ -22,10 +22,16 @@ const HEADLESS = process.env.HEADLESS === "true";
 
 cleanExpiredBlacklist();
 const PROXIES = process.env.PROXIES
-  ? process.env.PROXIES.split(",").map((p) => ({ proxy: p.trim(), country: "" }))
+  ? process.env.PROXIES.split(",").map((p) => ({
+      proxy: p.trim(),
+      country: "",
+    }))
   : loadProxies(path.join(ROOT, "proxies", "rechecked.csv"));
 const available = PROXIES.filter((item) => !isBlacklisted(item.proxy));
-logger.info(`Loaded ${PROXIES.length} proxies (${available.length} available, ${PROXIES.length - available.length} blacklisted).`, true);
+logger.info(
+  `Loaded ${PROXIES.length} proxies (${available.length} available, ${PROXIES.length - available.length} blacklisted).`,
+  true,
+);
 
 let count = 0;
 let success = 0;
@@ -48,25 +54,28 @@ let paused = false;
 function suspendTree(pid) {
   try {
     const ps = `Get-CimInstance Win32_Process | Where-Object {$_.ParentProcessId -eq ${pid}} | ForEach-Object { Suspend-Process -Id $_.ProcessId 2>$null }; Suspend-Process -Id ${pid} 2>$null`;
-    require("child_process").execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: "ignore" });
+    require("child_process").execSync(
+      `powershell -NoProfile -Command "${ps}"`,
+      { stdio: "ignore" },
+    );
   } catch (_) {}
 }
 
 function resumeTree(pid) {
   try {
     const ps = `Get-CimInstance Win32_Process | Where-Object {$_.ParentProcessId -eq ${pid}} | ForEach-Object { Resume-Process -Id $_.ProcessId 2>$null }; Resume-Process -Id ${pid} 2>$null`;
-    require("child_process").execSync(`powershell -NoProfile -Command "${ps}"`, { stdio: "ignore" });
+    require("child_process").execSync(
+      `powershell -NoProfile -Command "${ps}"`,
+      { stdio: "ignore" },
+    );
   } catch (_) {}
 }
 
 // ─── PROXY ──────────────────────────────────────────
 
 function getProxyInfo(env) {
-  if (env.USE_PROXY === "true") {
-    if (available.length === 0) return { proxy: "", country: "" };
-    const item = available[count % available.length];
-    if (isBlacklisted(item.proxy)) return { proxy: "", country: "" };
-    return item;
+  if (env.PROXY) {
+    return { proxy: env.PROXY, country: env.PROXY_COUNTRY || "" };
   }
   return { proxy: null, country: null };
 }
@@ -89,8 +98,16 @@ function renderHeadlessStatus() {
   if (!HEADLESS) return;
   const rows = process.stdout.rows || 40;
   const elapsed = formatDuration(Date.now() - loopStartTime);
-  const runElapsed = runStartTime ? formatDuration(Date.now() - runStartTime) : "0m 0s";
-  const statusColor = paused ? "\x1b[35m" : runStatus === "RUNNING" ? "\x1b[33m" : runStatus === "SUCCESS" ? "\x1b[32m" : "\x1b[31m";
+  const runElapsed = runStartTime
+    ? formatDuration(Date.now() - runStartTime)
+    : "0m 0s";
+  const statusColor = paused
+    ? "\x1b[35m"
+    : runStatus === "RUNNING"
+      ? "\x1b[33m"
+      : runStatus === "SUCCESS"
+        ? "\x1b[32m"
+        : "\x1b[31m";
   const displayStatus = paused ? "PAUSED" : runStatus;
 
   const row1 = rows - 2;
@@ -99,12 +116,12 @@ function renderHeadlessStatus() {
 
   process.stdout.write(
     `\x1b[${row1};1H\x1b[2K` +
-    `\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m` +
-    `\x1b[${row2};1H\x1b[2K` +
-    `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${displayStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}` +
-    `\x1b[${row3};1H\x1b[2K` +
-    (lastError ? `\x1b[31m  ${lastError}\x1b[0m` : "") +
-    `\x1b[4;1H`  // move cursor back to scroll area
+      `\x1b[48;5;236m\x1b[38;5;15m LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed} \x1b[0m` +
+      `\x1b[${row2};1H\x1b[2K` +
+      `\x1b[36m  Run #${count}\x1b[0m │ ${statusColor}${displayStatus}\x1b[0m │ ⏱ ${runElapsed} │ ${currentStep || "idle"}` +
+      `\x1b[${row3};1H\x1b[2K` +
+      (lastError ? `\x1b[31m  ${lastError}\x1b[0m` : "") +
+      `\x1b[4;1H`, // move cursor back to scroll area
   );
 }
 
@@ -125,9 +142,9 @@ function stopHeadlessDisplay() {
     headlessInterval = null;
   }
   const rows = process.stdout.rows || 40;
-  process.stdout.write("\x1b[r");           // reset scroll region
+  process.stdout.write("\x1b[r"); // reset scroll region
   process.stdout.write(`\x1b[${rows};1H`); // move cursor to bottom
-  process.stdout.write("\x1b[0m");          // reset colors
+  process.stdout.write("\x1b[0m"); // reset colors
 }
 
 // ─── TERMINAL DISPLAY ───────────────────────────────
@@ -135,7 +152,10 @@ function stopHeadlessDisplay() {
 function printStatusBar() {
   if (HEADLESS) return;
   const elapsed = formatDuration(Date.now() - loopStartTime);
-  logger.info(`LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed}`, true);
+  logger.info(
+    `LOOP │ ✓ ${success}  ✗ ${failed}  ⟳ ${count}  ⏱ ${elapsed}`,
+    true,
+  );
 }
 
 function printReport() {
@@ -159,7 +179,9 @@ function enableKeypress() {
     process.stdin.resume();
     process.stdin.setEncoding("utf8");
     keypressEnabled = true;
-  } catch (_) { return; }
+  } catch (_) {
+    return;
+  }
   process.stdin.on("data", onKey);
 }
 
@@ -178,7 +200,11 @@ function onKey(chunk) {
   if (s === "\u0003" || s === "q" || s === "Q") {
     logger.info("[loop] Stop requested.", true);
     stopping = true;
-    if (!running) { disableKeypress(); printReport(); process.exit(0); }
+    if (!running) {
+      disableKeypress();
+      printReport();
+      process.exit(0);
+    }
     if (currentChild) currentChild.kill("SIGINT");
     return;
   }
@@ -190,7 +216,8 @@ function onKey(chunk) {
     return;
   }
   if (s === "d" || s === "D") {
-    if (running && currentChild) logger.info("[loop] Step skip requested.", true);
+    if (running && currentChild)
+      logger.info("[loop] Step skip requested.", true);
     return;
   }
   // Pause / Resume
@@ -210,7 +237,10 @@ function onKey(chunk) {
       const idx = available.findIndex((item) => item.proxy === currentProxy);
       if (idx !== -1) {
         available.splice(idx, 1);
-        logger.info(`[loop] Proxy removed: ${currentProxy} (${available.length} remaining)`, true);
+        logger.info(
+          `[loop] Proxy removed: ${currentProxy} (${available.length} remaining)`,
+          true,
+        );
       }
     } else {
       logger.info("[loop] No proxy to remove.", true);
@@ -281,12 +311,11 @@ function run() {
   count++;
   const { proxy, country } = getProxyInfo(process.env);
 
-  if (
-    process.env.USE_PROXY === "true" &&
-    !process.env.PROXIES &&
-    available.length === 0
-  ) {
-    logger.info("[loop] Proxy list exhausted. Restarting with npm run auto-xiaomi...", true);
+  if (process.env.USE_PROXY === "true" && !proxy) {
+    logger.info(
+      "[loop] No proxy available. Restarting with npm run auto-xiaomi...",
+      true,
+    );
     stopHeadlessDisplay();
     disableKeypress();
     const child = spawn("npm", ["run", "auto-xiaomi"], {
@@ -314,7 +343,10 @@ function run() {
 
   if (!HEADLESS) {
     logger.info(`\n=== RUN #${count} (${proxyLabel}) ===`, true);
-    logger.info("[loop] 's' skip · 'd' step · 'r' remove · 'b' ban · 'm' move · 'p' pause · 'q' quit", true);
+    logger.info(
+      "[loop] 's' skip · 'd' step · 'r' remove · 'b' ban · 'm' move · 'p' pause · 'q' quit",
+      true,
+    );
   }
   logger.info(`RUN #${count} started — ${proxyLabel}`);
 
@@ -325,6 +357,7 @@ function run() {
   running = true;
   enableKeypress();
 
+  process.exit;
   if (HEADLESS) {
     currentChild = spawn("node", ["register.js", "xiaomi"], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -384,7 +417,10 @@ function run() {
     } else {
       failed++;
       runStatus = "FAILED";
-      logger.info(`Run #${count} stopped (code ${code}${signal ? `, signal ${signal}` : ""}) (${runElapsed}).`, true);
+      logger.info(
+        `Run #${count} stopped (code ${code}${signal ? `, signal ${signal}` : ""}) (${runElapsed}).`,
+        true,
+      );
     }
 
     if (currentRunBlocked) {
@@ -392,11 +428,11 @@ function run() {
       logger.info(`[loop] Google blocked count: ${googleBlockedCount}/6`, true);
     }
 
-    if (
-      googleBlockedCount >= 6 &&
-      process.env.USE_PROXY !== "true"
-    ) {
-      logger.info("[loop] IP blocked 6x consecutive. Switching to proxy mode and restarting...", true);
+    if (googleBlockedCount >= 6 && process.env.USE_PROXY !== "true") {
+      logger.info(
+        "[loop] IP blocked 6x consecutive. Switching to proxy mode and restarting...",
+        true,
+      );
       stopHeadlessDisplay();
       disableKeypress();
       process.env.USE_PROXY = "true";
@@ -420,7 +456,10 @@ function run() {
       process.exit(0);
     }
     const delay = 10000 + Math.floor(Math.random() * 10000);
-    logger.info(`Waiting ${Math.round(delay / 1000)}s before next run...`, true);
+    logger.info(
+      `Waiting ${Math.round(delay / 1000)}s before next run...`,
+      true,
+    );
     setTimeout(run, delay);
   });
 }

@@ -637,6 +637,32 @@ async function fetchProxies(providerName, outputPath) {
   return items;
 }
 
+function getNextProxy(proxies, opts = {}) {
+  const { configuredProxy = null, runIndex = 0 } = opts;
+
+  if (configuredProxy) {
+    if (isBlacklisted(configuredProxy)) {
+      console.log(`  [blacklist] Configured proxy is blacklisted, skipping.`);
+      return { proxy: "", country: "" };
+    }
+    return { proxy: configuredProxy, country: process.env.PROXY_COUNTRY || "" };
+  }
+
+  if (!proxies || proxies.length === 0) return { proxy: "", country: "" };
+
+  const available = proxies.filter((item) => !isBlacklisted(item.proxy));
+  if (available.length === 0) {
+    console.log(`  [blacklist] All proxies are blacklisted!`);
+    return { proxy: "", country: "" };
+  }
+
+  const picked = available[runIndex % available.length];
+  console.log(
+    `[proxy] Using: ${picked.proxy} [${picked.country || "-"}] (${available.length} available)`,
+  );
+  return { proxy: picked.proxy, country: picked.country || "" };
+}
+
 // ─── CLI ──────────────────────────────────────────────────
 
 function parseArgs() {
@@ -876,6 +902,7 @@ module.exports = {
   deepClean,
   fetchProxies,
   fetchFromUrl,
+  getNextProxy,
   getProvider,
   parseArgs,
   askMode,

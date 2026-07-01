@@ -26,6 +26,7 @@ const {
 const { solveImageCaptcha } = require("../utils/captcha-solver.js");
 const {
   loadProxies,
+  getNextProxy,
   isBlacklisted,
   addToBlacklist,
   cleanExpiredBlacklist,
@@ -36,6 +37,7 @@ const { logger } = require("../utils/logger.js");
 const ffmpegPath = findFfmpeg();
 const HEADLESS = process.env.HEADLESS === "true";
 const CAPTCHA_SOLVER_PROVIDER = process.env.CAPTCHA_SOLVER_PROVIDER || "manual";
+const envRegister = { ...process.env, AUTO_SKIP_RATE_LIMIT: "true" };
 
 let skipStep = false;
 let keypressEnabled = false;
@@ -162,7 +164,7 @@ const FREE_PROXIES = process.env.PROXIES
   : loadProxies(path.join(ROOT, "proxies", "rechecked.csv"));
 
 cleanExpiredBlacklist();
-logger.info(`  Loaded ${FREE_PROXIES.length} free proxies from CSV/env`, true);
+logger.info(`  Loaded ${FREE_PROXIES.length} proxies from CSV/env`, true);
 
 const COUNTRY_PROFILES = {
   US: {
@@ -330,38 +332,6 @@ function getCountryProfile(country) {
 
 let SELECTED_PROXY = "";
 let SELECTED_COUNTRY = "";
-
-async function getNextProxy() {
-  if (CONFIG.proxy) {
-    if (isBlacklisted(CONFIG.proxy)) {
-      logger.info(
-        `  [blacklist] Configured proxy is blacklisted, skipping.`,
-        true,
-      );
-      return "";
-    }
-    SELECTED_PROXY = CONFIG.proxy;
-    SELECTED_COUNTRY = process.env.PROXY_COUNTRY || "";
-    return CONFIG.proxy;
-  }
-  if (FREE_PROXIES.length === 0) return "";
-  const available = FREE_PROXIES.filter((item) => !isBlacklisted(item.proxy));
-  if (available.length === 0) {
-    logger.info(`  [blacklist] All proxies are blacklisted!`, true);
-    return "";
-  }
-  const picked = available[0];
-  SELECTED_PROXY = picked.proxy;
-  SELECTED_COUNTRY = picked.country || "";
-  logger.info(
-    `  [proxy] Using first available: ${picked.proxy} (${available.length} remaining)`,
-    true,
-  );
-  return picked.proxy;
-}
-
-// Alias for backward compat
-const getRandomProxy = getNextProxy;
 
 // solveRecaptchaWith2captcha and waitForCaptchaSolved functions are now imported from ./utils/captcha.js
 
@@ -611,8 +581,18 @@ async function register() {
   const startTime = Date.now();
   const TOTAL_STEPS = process.env.USE_REFERRAL_CODE === "true" ? 12 : 11;
   enableStepKeypress();
-  if (process.env.USE_PROXY === "true") {
-    CONFIG.proxy = await getRandomProxy();
+
+  if (process.env.PROXY) {
+    // Proxy provided by loop — use it directly
+    CONFIG.proxy = process.env.PROXY;
+    SELECTED_PROXY = process.env.PROXY;
+    SELECTED_COUNTRY = process.env.PROXY_COUNTRY || "";
+  } else if (process.env.USE_PROXY === "true") {
+    // Direct run — determine proxy via getNextProxy
+    const result = getNextProxy(FREE_PROXIES);
+    CONFIG.proxy = result.proxy;
+    SELECTED_PROXY = result.proxy;
+    SELECTED_COUNTRY = result.country;
   }
 
   logger.info(`[1/${TOTAL_STEPS}] Launching browser...`, true);
@@ -811,7 +791,7 @@ async function register() {
         let solved = false;
         if (CAPTCHA_SOLVER_PROVIDER === "manual") {
           logger.info(
-            "  >>> Please solve the captcha manually in the browser.",
+            "  >>> Please solve the captcha manually in the browser!",
             true,
           );
           logger.info("  >>> Playing manual-captcha sound alert", true);
@@ -845,17 +825,34 @@ async function register() {
           process.exitCode = 1;
           return;
         }
+
+        let captchaSolved = false;
         logger.info("  [WARN] Could not click reCAPTCHA checkbox.", true);
-        logger.info(
-          "  >>> Please solve the captcha manually in the browser.",
-          true,
-        );
-        logger.info("  >>> Playing manual-captcha sound alert.", true);
-        await playSound(SOUNDS.manualCaptcha);
-        const captchaSolved = await waitForCaptchaSolved(
-          page,
-          CONFIG.captchaSolveTimeout,
-        );
+
+        if (CAPTCHA_SOLVER_PROVIDER === "manual") {
+          logger.info(
+            "  >>> Please solve the captcha manually in the browser -_-",
+            true,
+          );
+
+          logger.info("  >>> Playing manual-captcha sound alert >_<", true);
+          await playSound(SOUNDS.manualCaptcha);
+          captchaSolved = await waitForCaptchaSolved(
+            page,
+            CONFIG.captchaSolveTimeout,
+          );
+        } else {
+          const customImg = page
+            .locator(
+              '.mi-captcha-field__image, img[src*="getCode"], img[src*="icodeType"]',
+            )
+            .first();
+
+          captchaSolved = await solveImageCaptcha(customImg, page, {
+            retries: 10,
+          });
+        }
+
         if (captchaSolved) {
           logger.info("  Captcha solved! Continuing...", true);
         } else {
